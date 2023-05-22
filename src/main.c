@@ -90,9 +90,4 @@ int main(void) {
 	}
 }
 
-
-#elif defined(STM32F3xx)
-/* STM32F3xx:
- * 	_WFI(); works here without any additional config
- */
 #endif
