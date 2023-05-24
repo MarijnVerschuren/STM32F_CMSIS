@@ -12,22 +12,24 @@ GPIO_TypeDef* int_to_GPIO(uint8_t num) {
 	return (GPIO_TypeDef*)(((num & 0x7u) << 10) + AHB1PERIPH_BASE);
 }
 
-
 /*!< init / disable */
+#ifdef STM32F4xx
 void enable_GPIO(GPIO_TypeDef* port) {
-	#ifdef STM32F3xx
-	RCC->AHBENR |= (0b1u << (16 + (GPIO_to_int(port) + 1)));
-	#elif defined(STM32F4xx)
 	RCC->AHB1ENR |= 0b1u << GPIO_to_int(port);
-	#endif
 }
 void disable_GPIO(GPIO_TypeDef* port) {
-	#ifdef STM32F3xx
-	RCC->AHBENR &= ~(0b1u << (16 + (GPIO_to_int(port) + 1)));
-	#elif defined(STM32F4xx)
 	RCC->AHB1ENR &= ~(0b1u << GPIO_to_int(port));
-	#endif
 }
+
+#elif defined(STM32F3xx)
+void enable_GPIO(GPIO_TypeDef* port) {
+    RCC->AHBENR |= (0b1u << (16 + (GPIO_to_int(port) + 1)));
+}
+void disable_GPIO(GPIO_TypeDef* port) {
+    RCC->AHBENR &= ~(0b1u << (16 + (GPIO_to_int(port) + 1)));
+}
+#endif
+
 void reset_GPIO(GPIO_TypeDef* port, uint8_t pin) {
 	port->MODER &= ~(0b11u << (pin << 1u));
 	port->OSPEEDR &= ~(0b11u << (pin << 1u));
