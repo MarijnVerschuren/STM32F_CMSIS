@@ -12,8 +12,9 @@
 #include "watchdog.h"
 
 
-#ifdef STM32F4xx
-
+#if defined(STM32H7xx)
+int main(void) {}
+#elif defined(STM32F4xx)
 #define LED_GPIO_PORT GPIOC
 #define LED_PIN 13
 #define BTN_GPIO_PORT GPIOA
@@ -35,7 +36,7 @@ int main(void) {
 	set_SYS_PLL_config(sys_config, 15, 120, PLL_P_DIV2, 0, PLL_SRC_HSE);
 	set_SYS_CLOCK_config(sys_config, SYS_CLK_SRC_PLL, AHB_CLK_NO_DIV, APBx_CLK_DIV2, APBx_CLK_NO_DIV, 0);
 	set_SYS_FLASH_config(sys_config, FLASH_LATENCY4, 1, 1, 1);  // latency is set automatically (when need be)
-	set_SYS_tick_config(sys_config, 1, 1);
+	set_SYS_tick_config(sys_config, 1, 1, NULL);
 	sys_clock_init(sys_config);
 	free(sys_config);
 
@@ -77,7 +78,7 @@ int main(void) {
 
 	// watchdog
 	config_watchdog(0, 0xfff);  // 512 ms
-	start_watchdog();
+	//start_watchdog();
 
 
 	// main loop
@@ -89,5 +90,8 @@ int main(void) {
 		__NOP();
 	}
 }
-
+#elif defined(STM32F3xx)
+int main(void) {}
+#else
+#error Invalid board selected
 #endif

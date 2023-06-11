@@ -2,11 +2,12 @@
 > ### EASY
 > * review and clean code
 > * window watchdog
+> * change name of repositories (stm32f -> stm32) because a H class board was added
 >
 > ### MODERATE
-> * RTOS
 > * implement usart transmit irq
-> * add more options to fconfig_UART
+> * add pin OD option to all (full) alternate function calls
+> * flip encoder polarity
 >
 > ### VERY HARD (abandoned)
 > * fix i2c multi master
