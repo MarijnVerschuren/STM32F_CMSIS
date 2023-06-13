@@ -12,9 +12,7 @@
 #include "watchdog.h"
 
 
-#if defined(STM32H7xx)
-int main(void) {}
-#elif defined(STM32F4xx)
+#if defined(STM32F4xx)
 #define LED_GPIO_PORT GPIOC
 #define LED_PIN 13
 #define BTN_GPIO_PORT GPIOA

@@ -1,5 +1,6 @@
 # STM32F_CMSIS
-CMSIS HAL library for STM32F4
+CMSIS HAL library for the STM32F family of micro controllers (ARM Cortex-M4)
+
 >## Features
 >* GPIO
 >* EXTI
@@ -27,7 +28,7 @@ int main(void) {
     // PULLUP:      GPIO_no_pull, GPIO_pull_up, GPIO_pull_down
     // OUTPUT_TYPE: GPIO_push_pull, GPIO_open_drain
     // SPEED:       GPIO_low_speed (default), GPIO_medium_speed, GPIO_high_speed, GPIO_very_high_speed,
-    // ALT_FUNC:    uint8_t [0, 15]
+    // ALT_FUNC:    uint8_t [0, 15] (only applies when using GPIO_alt_func)
     GPIO_write(PORT, PIN, DATA);
     // DATA:        uint8_t [0, 1]
     GPIO_toggle(PORT, PIN);
