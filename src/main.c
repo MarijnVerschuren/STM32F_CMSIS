@@ -90,6 +90,4 @@ int main(void) {
 }
 #elif defined(STM32F3xx)
 int main(void) {}
-#else
-#error Invalid board selected
 #endif

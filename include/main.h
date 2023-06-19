@@ -10,6 +10,8 @@
 #include "stm32f4xx.h"
 #elif defined(STM32F3xx)
 #include "stm32f3xx.h"
+#else
+#error invalid board selected
 #endif
 
 #endif //STM32F_MAIN_H
