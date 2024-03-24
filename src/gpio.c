@@ -34,7 +34,7 @@ void reset_GPIO(GPIO_TypeDef* port, uint8_t pin) {
 	port->MODER &= ~(0b11u << (pin << 1u));
 	port->OSPEEDR &= ~(0b11u << (pin << 1u));
 	port->PUPDR &= ~(0b11u << (pin << 1u));
-	port->OTYPER &= (0b1u << pin);
+	port->OTYPER &= ~(0b1u << pin);
 }
 void fconfig_GPIO(GPIO_TypeDef* port, uint8_t pin, GPIO_MODE_t mode, GPIO_PULL_t pull, GPIO_OT_t output_type, GPIO_SPEED_t speed, uint8_t alternate_function) {
 	enable_GPIO(port);

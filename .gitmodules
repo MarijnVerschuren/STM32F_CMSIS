@@ -1,0 +1,3 @@
+[submodule "test/ARM_emulator"]
+	path = test/ARM_emulator
+	url = https://github.com/MarijnVerschuren/ARM_emulator.git
