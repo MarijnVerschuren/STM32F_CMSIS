@@ -14,7 +14,7 @@ static inline void enable_USART_clock(USART_TypeDef* usart) {
 	else														{ RCC->APB1ENR |= (0b1u << (((uint32_t)usart - APB1PERIPH_BASE) >> 10u)); }
 }
 static inline void USART_GPIO_to_args(USART_GPIO_t usart_pin, USART_TypeDef** usart, uint8_t* alternate_function, GPIO_TypeDef** port, uint8_t* pin) {
-	uint8_t dev_id =		(usart_pin >> 16);
+	uint16_t dev_id =		(usart_pin >> 16);
 	(*usart) =				id_to_dev(*((dev_id_t*)&dev_id));
 	(*alternate_function) =	(usart_pin >> 8) & 0xfu;
 	(*port) =				int_to_GPIO(usart_pin >> 4);

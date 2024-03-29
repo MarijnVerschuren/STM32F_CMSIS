@@ -6,7 +6,7 @@
 
 /*!< static */
 static inline void TIM_GPIO_to_args(uint32_t tim_pin, TIM_TypeDef** tim, uint8_t* channel, uint8_t* alternate_function, GPIO_TypeDef** port, uint8_t* pin) {
-	uint8_t dev_id =		(tim_pin >> 16);
+	uint16_t dev_id =		(tim_pin >> 16);
 	(*tim) =				id_to_dev(*((dev_id_t*)&dev_id));
 	(*channel) =			(tim_pin >> 14) & 0x3u;
 	(*alternate_function) =	(tim_pin >> 8) & 0xfu;

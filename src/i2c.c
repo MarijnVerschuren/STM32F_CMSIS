@@ -6,7 +6,7 @@
 
 /*!< static */
 static inline void I2C_GPIO_to_args(uint32_t i2c_pin, I2C_TypeDef** i2c, uint8_t* alternate_function, GPIO_TypeDef** port, uint8_t* pin) {
-	uint8_t dev_id =		(i2c_pin >> 16);
+	uint16_t dev_id =		(i2c_pin >> 16);
 	(*i2c) =				id_to_dev(*((dev_id_t*)&dev_id));
 	(*alternate_function) =	(i2c_pin >> 8) & 0xfu;
 	(*port) =				int_to_GPIO(i2c_pin >> 4);

@@ -12,34 +12,35 @@
 
 /* data layout:
  * struct:
- *		dev_id						: 8;  // MSB
+ *		dev_id						: 16;  // MSB
  *			num							: 5;	// MSB
- *			clock						: 3;	// LSB
- *		misc						: 4;  // (reserved)
+ *			clock						: 5;
+ *			sub							: 6;	// LSB	// (reserved)
  *		alternate_function_number	: 4;
  *		port_number					: 4;
- *		pin_number					: 4;  // LSB
+ *		pin_number					: 4;
+ *		misc						: 4;  // LSB	// (reserved)
  * */
 typedef enum {
-	I2C_PIN_DISABLE =	0x000000,
+	I2C_PIN_DISABLE =	0x00000000,
 	// I2C1
-	I2C1_SMBA_B5 =		0x550415,
-	I2C1_SCL_B6 =		0x550416,
-	I2C1_SDA_B7 =		0x550417,
-	I2C1_SCL_B8 =		0x550418,
-	I2C1_SDA_B9 =		0x550419,
+	I2C1_SMBA_B5 =		0x55004150,
+	I2C1_SCL_B6 =		0x55004160,
+	I2C1_SDA_B7 =		0x55004170,
+	I2C1_SCL_B8 =		0x55004180,
+	I2C1_SDA_B9 =		0x55004190,
 	// I2C2
-	I2C2_SCL_B10 =		0x56041A,
-	I2C2_SDA_B11 =		0x56041B,
-	I2C2_SMBA_B12 =		0x56041C,
-	I2C2_SDA_B3 =		0x560913,
-	I2C2_SDA_B9 =		0x560919,
+	I2C2_SCL_B10 =		0x560041a0,
+	I2C2_SDA_B11 =		0x560041b0,
+	I2C2_SMBA_B12 =		0x560041c0,
+	I2C2_SDA_B3 =		0x56009130,
+	I2C2_SDA_B9 =		0x56009190,
 	// I2C3
-	I2C3_SCL_A8 =		0x570408,
-	I2C3_SMBA_A9 =		0x570409,
-	I2C3_SDA_C9 =		0x570429,
-	I2C3_SDA_B4 =		0x570914,
-	I2C3_SDA_B8 =		0x570918,
+	I2C3_SCL_A8 =		0x57004080,
+	I2C3_SMBA_A9 =		0x57004090,
+	I2C3_SDA_C9 =		0x57004290,
+	I2C3_SDA_B4 =		0x57009140,
+	I2C3_SDA_B8 =		0x57009180,
 } I2C_GPIO_t;
 
 typedef enum {

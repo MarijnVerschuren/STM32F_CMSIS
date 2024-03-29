@@ -17,17 +17,18 @@ typedef enum {
 } dev_clock_id_t;
 
 typedef struct {
-	uint8_t		num: 5;
-	uint8_t		reg: 3;  // dev_clock_id_t
-} dev_id_t;
+	uint16_t	num: 5;		// 1024
+	uint16_t	clk: 5;		// dev_clock_id_t
+	uint16_t	sub: 6;		// sub device info
+} dev_id_t;  // 16 bit
 
 typedef struct {
-	dev_id_t	dev_id;	// 8 bit
-	uint8_t		dev_info	: 4;
-	uint8_t		alt_func	: 4;
-	uint8_t		port_num	: 4;
-	uint8_t		pin_num		: 4;
-} dev_pin_t;
+	dev_id_t	id;
+	uint8_t		alt		: 4;
+	uint8_t		port	: 4;
+	uint8_t		num		: 4;
+	uint8_t		_		: 4;
+} dev_pin_t;  // 32 bit
 
 typedef struct {
 	volatile void*		ptr;
@@ -38,11 +39,12 @@ typedef struct {
 
 
 /*!< device */
-dev_id_t dev_to_id(void* dev);
 void* id_to_dev(dev_id_t id);
 /*!< buffer */
 io_buffer_t* new_buffer(uint32_t size);
 void free_buffer(io_buffer_t* buf);
+/*!< string */
+uint32_t strlen(const char* str);
 
 
 #endif //STM32F_CMSIS_BASE_H
