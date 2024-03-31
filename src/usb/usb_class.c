@@ -153,8 +153,8 @@ void* write_descriptor(void* ptr, USB_descriptor_type_t type, ...) {
 	switch (type) {
 	case USB_device_descriptor_type:;
 		uint16_t USB_version = *((uint16_t*)args);			args++;
-		*((uint8_t*)ptr) = USB_config_descriptor_size;		ptr++;	// descriptor_size
-		*((uint8_t*)ptr) = USB_config_descriptor_type;		ptr++;	// descriptor_type
+		*((uint8_t*)ptr) = USB_device_descriptor_size;		ptr++;	// descriptor_size
+		*((uint8_t*)ptr) = USB_device_descriptor_type;		ptr++;	// descriptor_type
 		*((uint8_t*)ptr) = USB_version & 0xFFU;				ptr++;	// USB_version (LS)
 		*((uint8_t*)ptr) = USB_version >> 0x8U;				ptr++;	// USB_version (MS)
 		*((uint8_t*)ptr) = *((uint8_t*)args);	args++;		ptr++;	// device_class

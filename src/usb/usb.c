@@ -155,6 +155,7 @@ void fconfig_USB_FS_device(USB_GPIO_t dp, USB_GPIO_t dn, uint32_t RX_FIFO_size) 
 	/* setup FIFO buffers */
 	config_USB_RX_FIFO(RX_FIFO_size);
 	config_USB_TX_FIFO(0, 0x40);		// max setup packet size
+
 }
 
 void config_USB_FS_device(USB_GPIO_t dp, USB_GPIO_t dn) {

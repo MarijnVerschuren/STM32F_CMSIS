@@ -20,7 +20,7 @@
 /*!<
  * types
  * */
-typedef struct {
+typedef __PACKED_STRUCT {
 	uint32_t EPNUM		: 4;	// endpoint number
 	uint32_t BCNT		: 10;	// byte count
 	uint32_t DPID		: 2;	// data PID
@@ -64,6 +64,13 @@ void open_IEP(uint8_t ep_num, uint16_t mps, EP_type_t type) {
 			USB_OTG_DIEPCTL_SD0PID_SEVNFRM			|	// set DATA0
 			USB_OTG_DIEPCTL_USBAEP						// enable endpoint
 		);
+	} else if (!ep_num) {
+		I_EP->DIEPCTL |= (
+			(mps & USB_OTG_DIEPCTL_MPSIZ)			|	// set max packet size
+			(type << USB_OTG_DIEPCTL_EPTYP_Pos)		|	// set endpoint type
+			(ep_num << USB_OTG_DIEPCTL_TXFNUM_Pos)	|	// set TX FIFO number
+			USB_OTG_DIEPCTL_SD0PID_SEVNFRM
+		);
 	}
 }
 void open_OEP(uint8_t ep_num, uint16_t mps, EP_type_t type) {
@@ -79,6 +86,12 @@ void open_OEP(uint8_t ep_num, uint16_t mps, EP_type_t type) {
 			(type << USB_OTG_DOEPCTL_EPTYP_Pos)		|	// set endpoint type
 			USB_OTG_DOEPCTL_SD0PID_SEVNFRM			|	// set DATA0
 			USB_OTG_DOEPCTL_USBAEP						// enable endpoint
+		);
+	} else if (!ep_num) {
+		O_EP->DOEPCTL |= (
+			(mps & USB_OTG_DOEPCTL_MPSIZ)			|	// set max packet size
+			(type << USB_OTG_DOEPCTL_EPTYP_Pos)		|	// set endpoint type
+			USB_OTG_DOEPCTL_SD0PID_SEVNFRM
 		);
 	}
 }
@@ -185,6 +198,26 @@ static inline void /**/ unstall_OEP(uint8_t ep_num) {
 }
 
 /*!< IO logic */
+static inline void /*NEW*/ load_packet(USB_IEP_t* iep, uint8_t ep_num) {
+	if (iep->count > iep->size) { return; }
+	uint32_t	len, len32, i, buffer;
+	uint32_t	*FIFO = (uint32_t*)((uint32_t)USB_OTG_FS + (0x1000UL * (ep_num + 1U)));
+	while (iep->size && iep->count < iep->size) {
+		len =	iep->size - iep->count;
+		len32 =	((len > iep->mps ? iep->mps : len) + 3U) >> 2U;
+		if ((I_EP->DTXFSTS & USB_OTG_DTXFSTS_INEPTFSAV) < len32) { break; }
+		buffer = (uint32_t)iep->src;							// save start ptr
+		for (i = 0UL; i < len32; i++) {							// write words
+			*FIFO = __UNALIGNED_UINT32_READ(iep->src);
+			iep->src++; iep->src++; iep->src++; iep->src++;		// 4x inc is faster than an add due to pipelining
+		}  // TODO: out of bounds read??
+		iep->count += ((uint32_t)iep->src) - buffer;			// add ptr difference
+	}
+	if (iep->size <= iep->count) {
+		// mask TX FIFO empty interrupt after all data is sent
+		DEV->DIEPEMPMSK &= ~(0b1UL << ep_num);
+	}
+}
 static inline void /**/ IN_transfer(uint8_t ep_num, void* buffer, uint32_t size) {
 	USB_IEP_t* iep = USB_handle->IEP[ep_num];
 	iep->src = buffer;
@@ -209,14 +242,19 @@ static inline void /**/ IN_transfer(uint8_t ep_num, void* buffer, uint32_t size)
 		// TODO: DMA? [stm32h7xx_ll_usb.c] @783
 		// TODO: ISO? [stm32h7xx_ll_usb.c] @810
 	} else {
-		I_EP->DIEPTSIZ |= (1UL << USB_OTG_DIEPTSIZ_PKTCNT_Pos);
+		I_EP->DIEPTSIZ |= (0b1UL << USB_OTG_DIEPTSIZ_PKTCNT_Pos);
 		if (size > iep->mps) { size = iep->mps; }  // reuse 'size' as next transfer size
 		I_EP->DIEPTSIZ |= (size & USB_OTG_DIEPTSIZ_XFRSIZ);
 		// TODO: DMA? [stm32h7xx_ll_usb.c] @925
 	}
 
+	// TODO: FIFO empty interrupt not called????? <<<<<<<<<<<<<<<<<<<<<<<<<<<
+	// TODO: look at: USBD_LL_DataInStage [usbd_core.c] @678
+
 	I_EP->DIEPCTL |= (USB_OTG_DIEPCTL_CNAK | USB_OTG_DIEPCTL_EPENA);	// enable EP
 	if (size) { DEV->DIEPEMPMSK |= 0b1UL << ep_num; }					// unmask TX FIFO empty interrupt
+
+	load_packet(iep, ep_num);
 }
 static inline void /**/ OUT_transfer(uint8_t ep_num, void* buffer, uint32_t size) {
 	USB_OEP_t* oep = USB_handle->OEP[ep_num];
@@ -320,7 +358,7 @@ static inline void /**/ data_OUT_stage(uint8_t ep_num) {
 static inline void /**/ get_device_descriptor(setup_header_t* req) {
 	uint8_t* ptr = NULL;
 
-	switch (req->value >> 8) {
+	switch (req->value & 0xFF) {  // TODO: '& 0xFF' was '>> 8'???
 	// TODO: LPM / BOS?
 	case USB_device_descriptor_type:
 		ptr = USB_handle->descriptor->device; break;
@@ -352,12 +390,14 @@ static inline void /**/ get_device_descriptor(setup_header_t* req) {
 		stall_EP(0);					// error
 		return;
 	}
+
 	if (!req->length) {
 		USB_handle->EP0_state = EP_STATUS_IN;				// control status IN
 		IN_transfer(0, NULL, 0U);
 		return;
 	}
 	if (!ptr) { stall_EP(0); return; }	// error
+	// TODO: len = min(len, req->length)???
 	USB_handle->EP0_state = EP_DATA_IN;						// control data IN
 	IN_transfer(0, ptr, *ptr);
 }
@@ -419,7 +459,7 @@ static inline void /**/ device_setup_request() {
 				return;
 			case USB_CONFIGURED:
 				USB_handle->EP0_state = EP_DATA_IN;					// control data IN
-				IN_transfer(0, &USB_handle->device_config, 1U);
+				IN_transfer(0, &USB_handle->device_config, 2U);
 				return;
 			default: break;
 			} break;
@@ -576,7 +616,7 @@ static inline void /**/ USB_OTG_IRQ() {
 	USB_OTG_FS->GOTGINT |= tmp;  // restore GOTGINT
 }
 static inline void /**/ USB_SOF_IRQ() {
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_SOF;
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_SOF;
 	if (
 		USB_handle->state == USB_CONFIGURED &&
 		USB_handle->class->SOF
@@ -586,8 +626,8 @@ static inline void /**/ USB_receive_packet_IRQ() {
 	USB_OEP_t*		oep;
 
 	USB_OTG_FS->GINTMSK &= ~USB_OTG_GINTMSK_RXFLVLM_Msk;	// note that RXFLVL is masked instead of cleared since that is not possible
-	uint32_t a = USB_OTG_FS->GRXSTSR;
-	GRXSTSR_t RX_status; *((uint32_t*)&RX_status) = a;
+	uint32_t status = USB_OTG_FS->GRXSTSP;
+	GRXSTSR_t RX_status; *((uint32_t*)&RX_status) = status;
 	volatile uint32_t* FIFO = (void*)(((uint32_t)USB_OTG_FS) + USB_OTG_FIFO_BASE);
 	oep = USB_handle->OEP[RX_status.EPNUM];
 
@@ -610,6 +650,7 @@ static inline void /**/ USB_receive_packet_IRQ() {
 		} oep->count += ((uint32_t)oep->dest) - buffer;
 		break;
 
+	case 0b1100U:
 	case 0b0110U:  // SETUP data packet
 		__UNALIGNED_UINT32_WRITE(&USB_handle->setup[0], *FIFO);
 		__UNALIGNED_UINT32_WRITE(&USB_handle->setup[1], *FIFO);
@@ -630,7 +671,7 @@ static inline void /**/ USB_reset_IRQ() {
 
 	for (ep_num = 0U; ep_num < USB_OTG_ENDPOINT_COUNT; ep_num++) {
 		iep = USB_handle->IEP[ep_num]; oep = USB_handle->OEP[ep_num];
-		I_EP->DIEPINT = O_EP->DOEPINT = 0xFB7FU;
+		I_EP->DIEPINT |= O_EP->DOEPINT |= 0xFB7FU;
 		I_EP->DIEPCTL &= ~USB_OTG_DIEPCTL_STALL;	// TODO: verify: datasheet says that it can only be set
 		O_EP->DOEPCTL &= ~USB_OTG_DOEPCTL_STALL;	// TODO: verify: datasheet says that it can only be set
 		O_EP->DOEPCTL |= USB_OTG_DOEPCTL_SNAK;
@@ -655,7 +696,7 @@ static inline void /**/ USB_reset_IRQ() {
 	DEV->DCFG &= ~USB_OTG_DCFG_DAD;				// reset device address
 
 	start_OEP0(*USB_handle->OEP);
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_USBRST;
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_USBRST;
 }
 static inline void /**/ USB_enumeration_done_IRQ(USB_IEP_t* iep) {
 	I_EP->DIEPCTL &= ~USB_OTG_DIEPCTL_MPSIZ;	// reset IEP0 maximum packet size
@@ -663,63 +704,49 @@ static inline void /**/ USB_enumeration_done_IRQ(USB_IEP_t* iep) {
 
 	// TODO: HS?				[stm32h7xx_ll_usb.c] @205
 	USB_OTG_FS->GUSBCFG &= ~USB_OTG_GUSBCFG_TRDT;  // reset turnaround time
-	if		(AHB_clock_frequency < 15000000UL)	{ USB_OTG_FS->GUSBCFG |= 0xFU << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 16000000UL)	{ USB_OTG_FS->GUSBCFG |= 0xEU << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 17200000UL)	{ USB_OTG_FS->GUSBCFG |= 0xDU << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 18500000UL)	{ USB_OTG_FS->GUSBCFG |= 0xCU << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 20000000UL)	{ USB_OTG_FS->GUSBCFG |= 0xBU << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 21800000UL)	{ USB_OTG_FS->GUSBCFG |= 0xAU << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 24000000UL)	{ USB_OTG_FS->GUSBCFG |= 0x9U << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 27700000UL)	{ USB_OTG_FS->GUSBCFG |= 0x8U << USB_OTG_GUSBCFG_TRDT_Pos; }
-	else if	(AHB_clock_frequency < 32000000UL)	{ USB_OTG_FS->GUSBCFG |= 0x7U << USB_OTG_GUSBCFG_TRDT_Pos; }
+	if		(PLLQ_clock_frequency < 15000000UL)	{ USB_OTG_FS->GUSBCFG |= 0xFU << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 16000000UL)	{ USB_OTG_FS->GUSBCFG |= 0xEU << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 17200000UL)	{ USB_OTG_FS->GUSBCFG |= 0xDU << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 18500000UL)	{ USB_OTG_FS->GUSBCFG |= 0xCU << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 20000000UL)	{ USB_OTG_FS->GUSBCFG |= 0xBU << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 21800000UL)	{ USB_OTG_FS->GUSBCFG |= 0xAU << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 24000000UL)	{ USB_OTG_FS->GUSBCFG |= 0x9U << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 27700000UL)	{ USB_OTG_FS->GUSBCFG |= 0x8U << USB_OTG_GUSBCFG_TRDT_Pos; }
+	else if	(PLLQ_clock_frequency < 32000000UL)	{ USB_OTG_FS->GUSBCFG |= 0x7U << USB_OTG_GUSBCFG_TRDT_Pos; }
 	else										{ USB_OTG_FS->GUSBCFG |= 0x6U << USB_OTG_GUSBCFG_TRDT_Pos; }
 	// TODO: HS? (see: HAL_PCD_ResetCallback)
 
+	// USBD_LL_Reset
 	USB_handle->state = USB_DEFAULT;
 	USB_handle->EP0_state = EP_IDLE;
 	USB_handle->device_config = 0x0000U;
 	USB_handle->class->de_init();
 	open_EP(0, 0x40UL, EP_TYPE_CONTROL);
 
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_ENUMDNE;		// clear interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_ENUMDNE;		// clear interrupt
 }
 
 /*!< IEP IRQ logic */  // TODO: check "IEP_FIFO_empty_IRQ" for out of bounds read possibility
 static inline void /**/ IEP_transfer_complete_IRQ(USB_IEP_t* iep, uint8_t ep_num) {
+	//GPIO_write(GPIOC, 13, 0);
 	DEV->DIEPEMPMSK &= ~(0b1UL << ep_num);	// mask interrupt
-	I_EP->DIEPINT = USB_OTG_DIEPINT_XFRC;
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_XFRC;
 	// TODO: DMA?				[stm32h7xx_hal_pcd.c] @1209
 	data_IN_stage(ep_num);
 }
 static inline void /**/ IEP_disabled_IRQ(USB_IEP_t* iep, uint8_t ep_num) {
 	flush_TX_FIFO(ep_num);
 	// TODO: ISO?				[stm32h7xx_hal_pcd.c] @1245
-	I_EP->DIEPINT = USB_OTG_DIEPINT_EPDISD;
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_EPDISD;
 }
 static inline void /*check*/ IEP_FIFO_empty_IRQ(USB_IEP_t* iep, uint8_t ep_num) {
-	if (iep->count > iep->size) { return; }
-	uint32_t	len, len32, i, buffer;
-	uint8_t		*FIFO = (uint8_t*)((uint32_t)USB_OTG_FS + (0x1000UL * (ep_num + 1U)));
-	while (iep->size && iep->count < iep->size) {
-		len =	iep->size - iep->count;
-		len32 =	((len > iep->mps ? iep->mps : len) + 3U) >> 2U;
-		if ((I_EP->DTXFSTS & USB_OTG_DTXFSTS_INEPTFSAV) < len32) { break; }
-		buffer = (uint32_t)iep->src;							// save start ptr
-		for (i = 0UL; i < len32; i++) {							// write words
-			*FIFO = __UNALIGNED_UINT32_READ(iep->src);
-			iep->src++; iep->src++; iep->src++; iep->src++;		// 4x inc is faster than an add due to pipelining
-		}  // TODO: out of bounds read??
-		iep->count += buffer - ((uint32_t)iep->src);			// write ptr difference
-	}
-	if (iep->size <= iep->count) {
-		// mask TX FIFO empty interrupt after all data is sent
-		DEV->DIEPEMPMSK &= ~(0b1UL << ep_num);
-	}
+	//GPIO_write(GPIOC, 13, 0);
+	load_packet(iep, ep_num);
 }
 
 /*!< OEP IRQ logic */
 static inline void /**/ OEP_transfer_complete(USB_OEP_t* oep, uint8_t ep_num) {
-	O_EP->DOEPINT = USB_OTG_DOEPINT_XFRC;
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_XFRC;
 	// TODO: DMA?				[stm32h7xx_hal_pcd.c] @2217
 	// TODO: CORE VERISON?		[stm32h7xx_hal_pcd.c] @2274
 
@@ -731,10 +758,10 @@ static inline void /**/ OEP_disabled(USB_OEP_t* oep) {
 		DEV->DCTL |= USB_OTG_DCTL_CGONAK;
 	}
 	// TODO: ISO?				[stm32h7xx_hal_pcd.c] @1158
-	O_EP->DOEPINT = USB_OTG_DOEPINT_EPDISD;
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_EPDISD;
 }
 static inline void /**/ OEP_setup_done(USB_OEP_t* oep) {
-	O_EP->DOEPINT = USB_OTG_DOEPINT_STUP;
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_STUP;
 	// TODO: CORE VERISON/DMA?	[stm32h7xx_hal_pcd.c] @2328
 	uint8_t* header = USB_handle->setup;
 	setup_header_t* req = &USB_handle->request;
@@ -763,7 +790,7 @@ static inline void /**/ OEP_setup_done(USB_OEP_t* oep) {
 static inline void /**/ IEP_common_handler(uint8_t ep_num) {
 	USB_IEP_t	*iep =		USB_handle->IEP[ep_num];
 	uint32_t	ep_int =	(
-		I_EP->DIEPINT & DEV->DIEPMSK &										// get all triggered interrupts
+		(I_EP->DIEPINT & DEV->DIEPMSK) *									// get all triggered interrupts
 		((DEV->DIEPEMPMSK >> ep_num) & 0b1UL) << USB_OTG_DIEPINT_TXFE_Pos	// include TXFE interrupt if enabled
 	);
 
@@ -772,25 +799,25 @@ static inline void /**/ IEP_common_handler(uint8_t ep_num) {
 	/* endpoint disabled interrupt */
 	if (ep_int & USB_OTG_DIEPINT_EPDISD)				{ IEP_disabled_IRQ(iep, ep_num); }
 	/* AHB error interrupt */							// TODO: DMA?
-	I_EP->DIEPINT = USB_OTG_DIEPINT_AHBERR;				// clear AHB error interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_AHBERR;				// clear AHB error interrupt
 	/* timeout condition interrupt */
-	I_EP->DIEPINT = USB_OTG_DIEPINT_TOC;				// clear timeout condition interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_TOC;				// clear timeout condition interrupt
 	/* IN token received when TX FIFO is empty interrupt */
-	I_EP->DIEPINT = USB_OTG_DIEPINT_ITTXFE;				// clear IN token received when TX FIFO empty interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_ITTXFE;				// clear IN token received when TX FIFO empty interrupt
 	/* IN token recieved with EP mismatch interrupt */
-	I_EP->DIEPINT = USB_OTG_DIEPINT_INEPNM;				// clear IN token EP mismatch interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_INEPNM;				// clear IN token EP mismatch interrupt
 	/* IN enpoint NAK effective interrupt */
-	I_EP->DIEPINT = USB_OTG_DIEPINT_INEPNE;				// clear IN endpoint NAK effective interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_INEPNE;				// clear IN endpoint NAK effective interrupt
 	/* TX FIFO empty interrupt */
 	if (ep_int & USB_OTG_DIEPINT_TXFE)					{ IEP_FIFO_empty_IRQ(iep, ep_num); }
 	/* TX FIFO underrun interrupt */
-	I_EP->DIEPINT = USB_OTG_DIEPINT_TXFIFOUDRN;			// clear TX FIFO underrun interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_TXFIFOUDRN;			// clear TX FIFO underrun interrupt
 	/* buffer not available interrupt */				// TODO: DMA?
-	I_EP->DIEPINT = USB_OTG_DIEPINT_BNA;				// clear buffer not available interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_BNA;				// clear buffer not available interrupt
 	/* packet dropped interrupt */						// TODO: ISO?
-	I_EP->DIEPINT = USB_OTG_DIEPINT_PKTDRPSTS;			// clear packet dropped interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_PKTDRPSTS;			// clear packet dropped interrupt
 	/* NAK interrupt */
-	I_EP->DIEPINT = USB_OTG_DIEPINT_NAK;				// clear NAK interrupt
+	I_EP->DIEPINT |= USB_OTG_DIEPINT_NAK;				// clear NAK interrupt
 }
 static inline void /**/ OEP_common_handler(uint8_t ep_num) {
 	USB_OEP_t	*oep =		USB_handle->OEP[ep_num];
@@ -801,30 +828,30 @@ static inline void /**/ OEP_common_handler(uint8_t ep_num) {
 	/* endpoint disabled interrupt */
 	if (ep_int & USB_OTG_DOEPINT_EPDISD)				{ OEP_disabled(oep); }
 	/* AHB error interrupt */							// TODO: DMA?
-	O_EP->DOEPINT = USB_OTG_DOEPINT_AHBERR;				// clear AHB error interrupt
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_AHBERR;				// clear AHB error interrupt
 	/* SETUP phase done */
 	if (ep_int & USB_OTG_DOEPINT_STUP)					{ OEP_setup_done(oep); }
 	/* OUT token received when endpoint disabled interrupt */
-	O_EP->DOEPINT = USB_OTG_DOEPINT_OTEPDIS;			// clear OUT token received when endpoint disabled interrupt
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_OTEPDIS;			// clear OUT token received when endpoint disabled interrupt
 	/* status phase received for control write */
-	O_EP->DOEPINT = USB_OTG_DOEPINT_OTEPSPR;			// clear status phase received for control write
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_OTEPSPR;			// clear status phase received for control write
 	/* back to back setup packet recived interrupt */
-	O_EP->DOEPINT = USB_OTG_DOEPINT_B2BSTUP;			// clear back to back setup packet received interrupt
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_B2BSTUP;			// clear back to back setup packet received interrupt
 	/* OUT packet error interrupt */
-	O_EP->DOEPINT = USB_OTG_DOEPINT_OUTPKTERR;			// clear OUT packet error interrupt
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_OUTPKTERR;			// clear OUT packet error interrupt
 	/* buffer not available interrupt */				// TODO: DMA?
-	O_EP->DOEPINT = USB_OTG_DIEPINT_BNA;				// clear buffer not available interrupt
+	O_EP->DOEPINT |= USB_OTG_DIEPINT_BNA;				// clear buffer not available interrupt
 	/* NAK interrupt */
-	O_EP->DOEPINT = USB_OTG_DOEPINT_NAK;				// clear NAK interrupt
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_NAK;				// clear NAK interrupt
 	/* NYET interrupt */								// TODO: HS?
-	O_EP->DOEPINT = USB_OTG_DOEPINT_NYET;				// clear NYET interrupt
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_NYET;				// clear NYET interrupt
 	/* setup packet received interrupt */				// TODO: DMA?
-	O_EP->DOEPINT = USB_OTG_DOEPINT_STPKTRX;			// clear setup packet received interrupt
+	O_EP->DOEPINT |= USB_OTG_DOEPINT_STPKTRX;			// clear setup packet received interrupt
 }
 static /*  */ void /**/ USB_common_handler() {
 	const uint32_t	irqs = USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK;
 	if (!irqs) {  // TODO why was this interrupt triggered if no unmasked interrupts are triggered??? NEEDED??
-		USB_OTG_FS->GINTSTS = USB_OTG_FS->GINTSTS;  // clear the masked interrupts
+		USB_OTG_FS->GINTSTS |= USB_OTG_FS->GINTSTS;  // clear the masked interrupts
 		return;
 	}
 	if ((USB_OTG_FS->GINTSTS) & 0b1UL) { return; }				// exit in host mode (not implemented)
@@ -833,7 +860,7 @@ static /*  */ void /**/ USB_common_handler() {
 	uint16_t		ep_gint;
 
 	/* mode mismatch interrupt */
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_MMIS;				// clear mode mismatch interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_MMIS;				// clear mode mismatch interrupt
 	/* OTG interrupt */
 	if (irqs & USB_OTG_GINTSTS_OTGINT)					{ USB_OTG_IRQ(); }
 	/* start of frame interrupt */
@@ -841,21 +868,21 @@ static /*  */ void /**/ USB_common_handler() {
 	/* receive packet interrupt */
 	if (irqs & USB_OTG_GINTSTS_RXFLVL)					{ USB_receive_packet_IRQ(); }
 	/* global IN non-periodic NAK effective interrupt */
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_GINAKEFF;			// clear global IN non-periodic NAK effective interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_GINAKEFF;			// clear global IN non-periodic NAK effective interrupt
 	/* global OUT NAK effective interrupt */
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_BOUTNAKEFF;			// clear global OUT NAK effective interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_BOUTNAKEFF;			// clear global OUT NAK effective interrupt
 	/* early suspend interrupt */						// TODO: LPM?
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_ESUSP;				// clear early suspend interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_ESUSP;				// clear early suspend interrupt
 	/* suspend interrupt */								// TODO: LPM?
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_USBSUSP;				// clear suspend interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_USBSUSP;				// clear suspend interrupt
 	/* reset interrupt */
 	if (irqs & USB_OTG_GINTSTS_USBRST)					{ USB_reset_IRQ(); }
 	/* enumeration done interrupt */
 	if (irqs & USB_OTG_GINTSTS_ENUMDNE)					{ USB_enumeration_done_IRQ(*USB_handle->IEP); }
 	/* isochronous OUT packet dropped interrupt */		// TODO: ISO?
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_ISOODRP;				// clear isochronous OUT packet dropped interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_ISOODRP;				// clear isochronous OUT packet dropped interrupt
 	/* end of periodic frame interrupt */
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_EOPF;				// clear end of periodic frame interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_EOPF;				// clear end of periodic frame interrupt
 	/* IN endpoint interrupts */
 	if (irqs & USB_OTG_GINTSTS_IEPINT) {
 		ep_num = 0U;
@@ -875,21 +902,20 @@ static /*  */ void /**/ USB_common_handler() {
 		}
 	}
 	/* incomplete isochronous IN interrupt */			// TODO: ISO?
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_IISOIXFR;			// clear incomplete isochronous IN interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_IISOIXFR;			// clear incomplete isochronous IN interrupt
 	/* incomplete isochronous OUT interrupt */			// TODO: ISO?
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_PXFR_INCOMPISOOUT;	// clear incomplete isochronous OUT interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_PXFR_INCOMPISOOUT;	// clear incomplete isochronous OUT interrupt
 	/* data fetch suspend interrupt */					// TODO: DMA?
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_DATAFSUSP;			// clear data fetch suspend interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_DATAFSUSP;			// clear data fetch suspend interrupt
 	/* connector ID status change interrupt */
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_CIDSCHG;				// clear connector ID status change interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_CIDSCHG;				// clear connector ID status change interrupt
 	/* connection event interrupt */
 	if (irqs & USB_OTG_GINTSTS_SRQINT) {
-		USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_SRQINT;
-		GPIO_toggle(GPIOC, 13);
+		USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_SRQINT;
 	}
-	//USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_SRQINT;				// clear connection event interrupt TODO: create flag?
+	//USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_SRQINT;				// clear connection event interrupt TODO: create flag?
 	/* wake-up interrupt */								// TODO: LPM?
-	USB_OTG_FS->GINTSTS = USB_OTG_GINTSTS_WKUINT;				// clear wake-up interrupt
+	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_WKUINT;				// clear wake-up interrupt
 }
 
 

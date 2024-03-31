@@ -6,7 +6,10 @@
 
 /*!< shared variables */
 uint32_t PLL_clock_frequency = 0;
+uint32_t PLLP_clock_frequency = 0;
+uint32_t PLLQ_clock_frequency = 0;
 uint32_t AHB_clock_frequency = 16000000;
+uint32_t AHB2_clock_frequency = 16000000;
 uint32_t APB1_clock_frequency = 16000000;
 uint32_t APB2_clock_frequency = 16000000;
 uint32_t RTC_clock_frequency = 0;
@@ -92,10 +95,14 @@ void set_SYS_power_config(SYS_CLK_Config_t* config, SYS_Power_t power) {
 }
 
 void sys_clock_init(SYS_CLK_Config_t* config) {
-	PLL_clock_frequency = ((16000000 + (9000000 * config->PLL_source)) / config->PLL_M) * (config->PLL_N / (2 * (config->PLL_P + 1)));
+	// TODO: improve
+	PLL_clock_frequency = ((16000000 + (9000000 * config->PLL_source)) / config->PLL_M) * config->PLL_N;
 	// round PLL clock frequency to 1000
 	if (PLL_clock_frequency % 1000) { PLL_clock_frequency += 1000; }
 	PLL_clock_frequency -= PLL_clock_frequency % 1000;
+	if (config->PLL_P) { PLLP_clock_frequency = PLL_clock_frequency / (2 * (config->PLL_P + 1)); }
+	if (config->PLL_Q) { PLLQ_clock_frequency = PLL_clock_frequency / config->PLL_Q; }
+
 	RCC->PLLCFGR = (																									/*
 				PLL_M: division factor for the main PLL and audio PLL (PLLI2S) input clock. Info:
 					the software has to set these bits correctly to ensure that the VCO
@@ -154,7 +161,7 @@ void sys_clock_init(SYS_CLK_Config_t* config) {
 	switch (config->SYS_CLK_source) {
 		case SYS_CLK_SRC_HSI:	SYS_clock_frequency = 16000000; break;
 		case SYS_CLK_SRC_HSE:	SYS_clock_frequency = 25000000; break;
-		case SYS_CLK_SRC_PLL:	SYS_clock_frequency = PLL_clock_frequency; break;
+		case SYS_CLK_SRC_PLL:	SYS_clock_frequency = PLLP_clock_frequency; break;
 		default:				SYS_clock_frequency = 0; break;
 	}
 	if (config->AHB_prescaler & 0x8) {

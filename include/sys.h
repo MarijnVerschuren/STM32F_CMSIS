@@ -137,6 +137,8 @@ typedef struct {
 
 /*!< variables */   // values are updated when calling sys_clock_init
 extern uint32_t PLL_clock_frequency;
+extern uint32_t PLLP_clock_frequency;
+extern uint32_t PLLQ_clock_frequency;
 extern uint32_t AHB_clock_frequency;
 extern uint32_t APB1_clock_frequency;
 extern uint32_t APB2_clock_frequency;

@@ -108,11 +108,11 @@ typedef struct {
 	// TODO: USBD_Desc
 }	USB_descriptor_t;
 
-typedef struct {
+typedef __PACKED_STRUCT {
 	SETUP_recipiant_t		    recipiant	: 5;		// |
 	SETUP_request_type_t	    type		: 2;		// | bmRequest
 	uint8_t					    direction	: 1;		// |  // TODO: MSB?!!!!!!!!!!!!!!!!!!
-	SETUP_command_t			    command;				// bRequest
+	uint8_t					    command;				// bRequest
 	uint16_t				    value;					// wValue
 	uint16_t				    index;					// wIndex
 	uint16_t				    length;					// wLength
@@ -166,7 +166,7 @@ typedef struct {
 	volatile uint16_t			address		: 7;
 	volatile uint16_t			class_init	: 1;
 	volatile uint32_t			EP0_data;
-	volatile uint8_t			device_config;			// response sent on GET_STATUS request
+	volatile uint16_t			device_config;			// response sent on GET_STATUS request
 }	USB_handle_t;
 
 

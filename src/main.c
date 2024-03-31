@@ -30,7 +30,8 @@ extern void EXTI0_IRQHandler(void) {
 }
 
 int main(void) {
-	// sys_clock: 25Mhz / 25 * 192 / 2 = 100Mhz
+	// sys_clock: 25Mhz / 25 * 192 / 2 = 96Mhz
+	// usb_clock: 25Mhz / 25 * 192 / 4 = 48Mhz
 	SYS_CLK_Config_t* sys_config = new_SYS_CLK_config();
 	set_SYS_PLL_config(sys_config, 25, 192, PLL_P_DIV2, 4, PLL_SRC_HSE);
 	set_SYS_CLOCK_config(sys_config, SYS_CLK_SRC_PLL, AHB_CLK_NO_DIV, APBx_CLK_DIV2, APBx_CLK_NO_DIV, 0);
@@ -90,55 +91,43 @@ int main(void) {
 	// USB
 	config_USB_FS_device(USB_DP_A12, USB_DM_A11);
 	USB_OTG_DeviceTypeDef		*device =	(void*)((uint32_t)USB_OTG_FS + 0x800);
-	USB_OTG_FS->GOTGCTL = 0x00000D00;
-	USB_OTG_FS->GINTSTS = 0x208C0044;
-	USB_OTG_FS->GCCFG = 0xFFFF2100;
-	device->DCFG = 0x03002000;
-	device->DCFG = 0x07000000;
+	USB_OTG_INEndpointTypeDef		*in =	(void*)((uint32_t)USB_OTG_FS + 0x900);
+	*((uint16_t*)&USB_OTG_FS->GCCFG) = 0x21;
+	USB_OTG_FS->CID = 0x4D2E562EUL; // set CID to "M.V." for fun :)
 
-	USB_handle_t* handle = fconfig_USB_handle(USB_CLASS_HID_KEYBOARD, 1U, 0U, HID_KEYBOARD_DESCRIPTOR_SIZE);
-	start_USB();
-	(void)handle;
+	/*
 
-	/* CORE mismatches:
-	reg,				nominal,		faulty
-	GOTGCTL				0x00000D00      0x00000100
-	 - bit11 ?
-	 - bit12 ?
-	GINTSTS             0x208C0044      0x20100004
-	 - GINAKEFF
-	 - IEPINT
-	 - OEPINT
-	 + IISOIXFR
-	 - bit23 ?
-	GINTMSK             0x10383C80      0x14383CC0
-	 + bit6
-	 + bit26
-	GRXSTSR             0x00000000      0x80002C00
-	GRXSTSP             0x00000000      0x80002C00
-	GCCFG               0xFFFF2100      0xFFFF0800
-	 - bit8
-	 - bit13
-	 + bit11
-	DIEPTXF[0]          0xC0008000      0xC0000000
-	DIEPTXF[1]          0x00000000      0xC0000000
-	DIEPTXF[2]          0x00000000      0xC0000000
-	DIEPTXF[4]          0xC0008000      0xC0000000
-	DIEPTXF[5]          0x00000000      0xC0000000
-	DIEPTXF[6]          0x00000000      0xC0000000
-	DIEPTXF[8]          0xC0008000      0xC0000000
-	DIEPTXF[9]          0x00000000      0xC0000000
-	DIEPTXF[10]         0x00000000      0xC0000000
-	DIEPTXF[12]         0xC0008000      0xC0000000
-	DIEPTXF[13]         0x00000000      0xC0000000
-	DIEPTXF[14]         0x00000000      0xC0000000
-	*/
-	/* DEV mismatch
-	DCFG				0x03002000      0x00022000
-	DSTS				0x07000000      0x02000000
+	USBD_DescriptorsTypeDef FS_Desc =
+	{
+	  USBD_FS_DeviceDescriptor
+	, USBD_FS_LangIDStrDescriptor
+	, USBD_FS_ManufacturerStrDescriptor
+	, USBD_FS_ProductStrDescriptor
+	, USBD_FS_SerialStrDescriptor
+	, USBD_FS_ConfigStrDescriptor
+	, USBD_FS_InterfaceStrDescriptor
+	};
 	 */
 
-	/*USB_OTG_FS->CID = 0x4D2E562EUL; // set CID to "M.V." for fun :)
+	/* DEV MM
+	DCFG  0x03002000      0x00022000
+
+	DSTS  0x07000000      0x03000000
+		- 0x04000000
+	 */
+	/* IEP[0] MM
+	DIEPCTL		0x00800080      0x00800280	->	0x00000200
+		+ bit9?
+	DIEPINT		0xC0200000      0xD0200000  ->	0x10000000
+		+ bit28?
+	DIEPTSIZ	0x12000800      0x09000800	->	-0x12000000, +0x09000000
+		- bit28?
+		- bit25?
+		+ bit23?
+		+ PKTCNT_H (bit 20)
+	 */
+
+	USB_handle_t* handle = fconfig_USB_handle(USB_CLASS_HID_KEYBOARD, 1U, 0U, HID_KEYBOARD_DESCRIPTOR_SIZE);
 	// config interfaces  TODO: redo structure!!!!! ( hide handle :(( )
 
 	(void)write_descriptor(
@@ -186,8 +175,10 @@ int main(void) {
 	handle->descriptor->serial_string = create_string_descriptor("fb49484a-ce2a-466e-aded-073dab3a483b");
 	handle->descriptor->configuration_string = create_string_descriptor("");
 	handle->descriptor->interface_string = create_string_descriptor("");
-	*/
 
+	start_USB();
+
+	// TODO: IEP/OEP0 configured in USBD_LL_Reset!!!!!!!!!!!!!!
 	// main loop
 	for(;;) {
 		//reset_watchdog();
