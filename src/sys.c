@@ -100,7 +100,7 @@ void sys_clock_init(SYS_CLK_Config_t* config) {
 	// round PLL clock frequency to 1000
 	if (PLL_clock_frequency % 1000) { PLL_clock_frequency += 1000; }
 	PLL_clock_frequency -= PLL_clock_frequency % 1000;
-	if (config->PLL_P) { PLLP_clock_frequency = PLL_clock_frequency / (2 * (config->PLL_P + 1)); }
+	PLLP_clock_frequency = PLL_clock_frequency / (2 * (config->PLL_P + 1));
 	if (config->PLL_Q) { PLLQ_clock_frequency = PLL_clock_frequency / config->PLL_Q; }
 
 	RCC->PLLCFGR = (																									/*

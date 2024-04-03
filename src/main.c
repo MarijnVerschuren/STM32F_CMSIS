@@ -89,98 +89,22 @@ int main(void) {
 	*/
 
 	// USB
-	config_USB_FS_device(USB_DP_A12, USB_DM_A11);
-	USB_OTG_DeviceTypeDef		*device =	(void*)((uint32_t)USB_OTG_FS + 0x800);
-	USB_OTG_INEndpointTypeDef		*in =	(void*)((uint32_t)USB_OTG_FS + 0x900);
-	*((uint16_t*)&USB_OTG_FS->GCCFG) = 0x21;
-	USB_OTG_FS->CID = 0x4D2E562EUL; // set CID to "M.V." for fun :)
+	MX_USB_DEVICE_Init();
 
-	/*
+	uint8_t HID_Buffer[8] = { 0 };
 
-	USBD_DescriptorsTypeDef FS_Desc =
-	{
-	  USBD_FS_DeviceDescriptor
-	, USBD_FS_LangIDStrDescriptor
-	, USBD_FS_ManufacturerStrDescriptor
-	, USBD_FS_ProductStrDescriptor
-	, USBD_FS_SerialStrDescriptor
-	, USBD_FS_ConfigStrDescriptor
-	, USBD_FS_InterfaceStrDescriptor
-	};
-	 */
-
-	/* DEV MM
-	DCFG  0x03002000      0x00022000
-
-	DSTS  0x07000000      0x03000000
-		- 0x04000000
-	 */
-	/* IEP[0] MM
-	DIEPCTL		0x00800080      0x00800280	->	0x00000200
-		+ bit9?
-	DIEPINT		0xC0200000      0xD0200000  ->	0x10000000
-		+ bit28?
-	DIEPTSIZ	0x12000800      0x09000800	->	-0x12000000, +0x09000000
-		- bit28?
-		- bit25?
-		+ bit23?
-		+ PKTCNT_H (bit 20)
-	 */
-
-	USB_handle_t* handle = fconfig_USB_handle(USB_CLASS_HID_KEYBOARD, 1U, 0U, HID_KEYBOARD_DESCRIPTOR_SIZE);
-	// config interfaces  TODO: redo structure!!!!! ( hide handle :(( )
-
-	(void)write_descriptor(
-	write_HID_descriptor(
-	write_descriptor(
-	write_descriptor(
-		handle->class->descriptor,
-		USB_config_descriptor_type,
-		0x22U, 0x01U, 0x01U, 0x00U,
-		USB_bus_powered, 0x32U
-	),
-		USB_interface_descriptor_type,
-		0x00U, 0x00U, 0x01U, 0x03U, 0x01U,
-		0x01U,			// interface protocol
-		0x00U
-	),
-		0x0111U,
-		0x00,
-		HID_KEYBOARD_REPORT_DESCRIPTOR_SIZE
-	),
-		USB_endpoint_descriptor_type,
-		0x08U, 0x81U, EP_TYPE_INTERRUPT, 0x0AU
-	);
-
-	(void)write_descriptor(
-		handle->descriptor->device,
-		USB_device_descriptor_type,
-		0x2000U,		// USB 2.0
-		0x03U,			// HID TODO: define
-		0x00U,			// no subclasss
-		0x01U,			// device protocol set to the same as inteface TODO: valid??
-		64U,			// EP0_MPS TODO: define
-		0x0000,			// vendor ID
-		0x0000,			// product ID
-		0x2000,			// device version (USB 2.0??) TODO: valid?
-		0x1U,			// manufacturer string index
-		0x2U,			// product string index
-		0x3U,			// serial string index
-		0x1U			// config count
-	);
-
-	handle->descriptor->lang_ID_string = create_string_descriptor("NL");
-	handle->descriptor->manufacturer_string = create_string_descriptor("Marijn");
-	handle->descriptor->product_string = create_string_descriptor("Keyboard");
-	handle->descriptor->serial_string = create_string_descriptor("fb49484a-ce2a-466e-aded-073dab3a483b");
-	handle->descriptor->configuration_string = create_string_descriptor("");
-	handle->descriptor->interface_string = create_string_descriptor("");
-
-	start_USB();
-
-	// TODO: IEP/OEP0 configured in USBD_LL_Reset!!!!!!!!!!!!!!
 	// main loop
 	for(;;) {
+		HID_Buffer[0] = 0x02;  // left Shift
+		HID_Buffer[2] = 0x04;  // press 'a'
+		HID_Buffer[3] = 0x05;  // press 'b'
+		USBD_HID_SendReport(&hUsbDeviceFS, HID_Buffer, 8);
+		delay_ms(1000);
+		HID_Buffer[0] = 0x00;
+		HID_Buffer[2] = 0x00;
+		HID_Buffer[3] = 0x00;
+		USBD_HID_SendReport(&hUsbDeviceFS, HID_Buffer, 8);
+		delay_ms(1000);
 		//reset_watchdog();
 	}
 }
