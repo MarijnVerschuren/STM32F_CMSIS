@@ -1374,7 +1374,6 @@ uint32_t USB_ReadInterrupts(USB_OTG_GlobalTypeDef const *USBx) {
 #define __HAL_PCD_CLEAR_FLAG(__HANDLE__, __INTERRUPT__)    (((__HANDLE__)->Instance->GINTSTS) &= (__INTERRUPT__))
 #define __HAL_PCD_IS_INVALID_INTERRUPT(__HANDLE__)         (USB_ReadInterrupts((__HANDLE__)->Instance) == 0U)
 #define __HAL_PCD_GET_FLAG(__HANDLE__, __INTERRUPT__) ((USB_ReadInterrupts((__HANDLE__)->Instance) & (__INTERRUPT__)) == (__INTERRUPT__))
-extern uint32_t USB_GetMode(const USB_OTG_GlobalTypeDef *USBx);
 #define USB_MASK_INTERRUPT(__INSTANCE__, __INTERRUPT__)     ((__INSTANCE__)->GINTMSK &= ~(__INTERRUPT__))
 #define USB_UNMASK_INTERRUPT(__INSTANCE__, __INTERRUPT__)   ((__INSTANCE__)->GINTMSK |= (__INTERRUPT__))
 #define CLEAR_IN_EP_INTR(__EPNUM__, __INTERRUPT__)          (USBx_INEP(__EPNUM__)->DIEPINT = (__INTERRUPT__))
@@ -1746,7 +1745,7 @@ void HAL_PCD_IRQHandler(PCD_HandleTypeDef *hpcd) {
 	uint32_t RegVal;
 
 	/* ensure that we are in device mode */
-	if (USB_GetMode(hpcd->Instance) == USB_OTG_MODE_DEVICE) {
+	if (((USBx->GINTSTS) & 0x1U) == USB_OTG_MODE_DEVICE) {
 		/* avoid spurious interrupt */
 		if (__HAL_PCD_IS_INVALID_INTERRUPT(hpcd)) {
 			return;

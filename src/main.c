@@ -20,6 +20,7 @@
 #define BTN_PIN 0
 
 
+uint8_t HID_Buffer[8] = { 0x02, 0, 0x15, 0, 0, 0, 0, 0 };
 extern void TIM1_UP_TIM10_IRQHandler(void) {
 	TIM10->SR &= ~TIM_SR_UIF;
 	//GPIO_toggle(LED_GPIO_PORT, LED_PIN);
@@ -27,6 +28,7 @@ extern void TIM1_UP_TIM10_IRQHandler(void) {
 extern void EXTI0_IRQHandler(void) {
 	EXTI->PR = EXTI_PR_PR0;
 	//GPIO_toggle(LED_GPIO_PORT, LED_PIN);
+	USBD_HID_SendReport(&hUsbDeviceFS, HID_Buffer, 8);
 }
 
 int main(void) {
@@ -46,7 +48,7 @@ int main(void) {
 	GPIO_write(LED_GPIO_PORT, LED_PIN, 1);  // led is active low
 
 	// EXTI
-	config_EXTI(BTN_PIN, BTN_GPIO_PORT, 1, 1);
+	config_EXTI(BTN_PIN, BTN_GPIO_PORT, 1, 0);
 	start_EXTI(BTN_PIN);
 
 	// initialize CRC
@@ -91,22 +93,8 @@ int main(void) {
 	// USB
 	MX_USB_DEVICE_Init();
 
-	uint8_t HID_Buffer[8] = { 0 };
-
 	// main loop
-	for(;;) {
-		HID_Buffer[0] = 0x02;  // left Shift
-		HID_Buffer[2] = 0x04;  // press 'a'
-		HID_Buffer[3] = 0x05;  // press 'b'
-		USBD_HID_SendReport(&hUsbDeviceFS, HID_Buffer, 8);
-		delay_ms(1000);
-		HID_Buffer[0] = 0x00;
-		HID_Buffer[2] = 0x00;
-		HID_Buffer[3] = 0x00;
-		USBD_HID_SendReport(&hUsbDeviceFS, HID_Buffer, 8);
-		delay_ms(1000);
-		//reset_watchdog();
-	}
+	for(;;) {}
 }
 #elif defined(STM32F3xx)
 int main(void) {}
