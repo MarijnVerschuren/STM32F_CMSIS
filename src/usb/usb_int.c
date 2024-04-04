@@ -1574,7 +1574,6 @@ void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd) {
 	/* Reset Device. */
 	USBD_LL_Reset((USBD_HandleTypeDef*)hpcd->pData);
 }
-extern HAL_StatusTypeDef USB_FlushTxFifo(USB_OTG_GlobalTypeDef *USBx, uint32_t num);
 static HAL_StatusTypeDef PCD_WriteEmptyTxFifo(PCD_HandleTypeDef *hpcd, uint32_t epnum) {
 	USB_OTG_GlobalTypeDef *USBx = hpcd->Instance;
 	uint32_t USBx_BASE = (uint32_t)USBx;
@@ -1730,6 +1729,10 @@ HAL_StatusTypeDef HAL_PCD_EP_Abort(PCD_HandleTypeDef *hpcd, uint8_t ep_addr) {
 	ret = USB_EPStopXfer(hpcd->Instance, ep);
 	return ret;
 }
+
+extern void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb);
+extern void flush_TX_FIFO(USB_OTG_GlobalTypeDef* usb, uint8_t ep);
+extern void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb);
 
 
 // L1 ========================================= /
@@ -1909,7 +1912,7 @@ void HAL_PCD_IRQHandler(PCD_HandleTypeDef *hpcd) {
 					}
 					if ((epint & USB_OTG_DIEPINT_EPDISD) == USB_OTG_DIEPINT_EPDISD)
 					{
-						(void)USB_FlushTxFifo(USBx, epnum);
+						flush_TX_FIFO(hpcd->Instance, epnum);
 
 						ep = &hpcd->IN_ep[epnum];
 
@@ -1965,7 +1968,7 @@ void HAL_PCD_IRQHandler(PCD_HandleTypeDef *hpcd) {
 		if (__HAL_PCD_GET_FLAG(hpcd, USB_OTG_GINTSTS_USBRST))
 		{
 			USBx_DEVICE->DCTL &= ~USB_OTG_DCTL_RWUSIG;
-			(void)USB_FlushTxFifo(hpcd->Instance, 0x10U);
+			flush_TX_FIFOS(hpcd->Instance);
 
 			for (i = 0U; i < hpcd->Init.dev_endpoints; i++)
 			{

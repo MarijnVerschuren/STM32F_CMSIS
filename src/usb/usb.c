@@ -49,63 +49,30 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
  * static / hidden
  * */
 // L5 ========================================= /
-HAL_StatusTypeDef USB_SetDevSpeed(const USB_OTG_GlobalTypeDef *USBx, uint8_t speed) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	USBx_DEVICE->DCFG |= speed;
-	return HAL_OK;
+void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb) {
+	__IO uint32_t why = 0;  // NOTE: creating a variable IS mandatory????
+	while (!(usb->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL));	// wait for AHB master IDLE state
+	usb->GRSTCTL = USB_OTG_GRSTCTL_RXFFLSH;					// flush RX FIFO
+	while (usb->GRSTCTL & USB_OTG_GRSTCTL_RXFFLSH);			// wait until reset is processed
 }
-HAL_StatusTypeDef USB_FlushTxFifo(USB_OTG_GlobalTypeDef *USBx, uint32_t num) {
-	__IO uint32_t count = 0U;
-	/* Wait for AHB master IDLE state. */
-	do {
-		count++;
-		if (count > HAL_USB_TIMEOUT) {
-			return HAL_TIMEOUT;
-		}
-	} while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL) == 0U);
-	/* Flush TX Fifo */
-	count = 0U;
-	USBx->GRSTCTL = (USB_OTG_GRSTCTL_TXFFLSH | (num << 6));
-
-	do {
-		count++;
-		if (count > HAL_USB_TIMEOUT) {
-			return HAL_TIMEOUT;
-		}
-	} while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_TXFFLSH) == USB_OTG_GRSTCTL_TXFFLSH);
-	return HAL_OK;
+void flush_TX_FIFO(USB_OTG_GlobalTypeDef* usb, uint8_t ep) {
+	while (!(usb->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL));		// wait for AHB master IDLE state
+	usb->GRSTCTL = (
+			ep << USB_OTG_GRSTCTL_TXFNUM_Pos		|			// select ep TX FIFO
+			0b1UL << USB_OTG_GRSTCTL_TXFFLSH_Pos				// flush TX FIFO
+	);
+	while (usb->GRSTCTL & USB_OTG_GRSTCTL_TXFFLSH);			// wait until reset is processed
 }
-HAL_StatusTypeDef USB_FlushRxFifo(USB_OTG_GlobalTypeDef *USBx) {
-	__IO uint32_t count = 0U;
-	/* Wait for AHB master IDLE state. */
-	do {
-		count++;
-		if (count > HAL_USB_TIMEOUT) {
-			return HAL_TIMEOUT;
-		}
-	} while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL) == 0U);
-	/* Flush RX Fifo */
-	count = 0U;
-	USBx->GRSTCTL = USB_OTG_GRSTCTL_RXFFLSH;
-
-	do {
-		count++;
-		if (count > HAL_USB_TIMEOUT) {
-			return HAL_TIMEOUT;
-		}
-	} while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_RXFFLSH) == USB_OTG_GRSTCTL_RXFFLSH);
-	return HAL_OK;
+void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb) {
+	while (!(usb->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL));		// wait for AHB master IDLE state
+	usb->GRSTCTL = (
+			0x10UL << USB_OTG_GRSTCTL_TXFNUM_Pos		|		// select all TX FIFOs
+			0b1UL << USB_OTG_GRSTCTL_TXFFLSH_Pos				// flush TX FIFOs
+	);
+	while (usb->GRSTCTL & USB_OTG_GRSTCTL_TXFFLSH);			// wait until reset is processed
 }
-
 
 // L4 ========================================= /
-HAL_StatusTypeDef USB_DevDisconnect(const USB_OTG_GlobalTypeDef *USBx) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	/* In case phy is stopped, ensure to ungate and restore the phy CLK */
-	USBx_PCGCCTL &= ~(USB_OTG_PCGCCTL_STOPCLK | USB_OTG_PCGCCTL_GATECLK);
-	USBx_DEVICE->DCTL |= USB_OTG_DCTL_SDIS;
-	return HAL_OK;
-}
 HAL_StatusTypeDef USB_DevConnect(const USB_OTG_GlobalTypeDef *USBx) {
 	uint32_t USBx_BASE = (uint32_t)USBx;
 	/* In case phy is stopped, ensure to ungate and restore the phy CLK */
@@ -125,30 +92,17 @@ HAL_StatusTypeDef USB_DisableGlobalInt(USB_OTG_GlobalTypeDef *USBx) {
 #define __HAL_PCD_DISABLE(__HANDLE__)                      (void)USB_DisableGlobalInt ((__HANDLE__)->Instance)
 
 // L3 ========================================= / // X
-HAL_StatusTypeDef HAL_PCDEx_SetRxFiFo(PCD_HandleTypeDef *hpcd, uint16_t size) {
-	hpcd->Instance->GRXFSIZ = size;
-	return HAL_OK;
-}
 HAL_StatusTypeDef HAL_PCDEx_SetTxFiFo(PCD_HandleTypeDef *hpcd, uint8_t fifo, uint16_t size) {
 	uint8_t i;
 	uint32_t Tx_Offset;
 
-	/*  TXn min size = 16 words. (n  : Transmit FIFO index)
-		When a TxFIFO is not used, the Configuration should be as follows:
-			case 1 :  n > m    and Txn is not used    (n,m  : Transmit FIFO indexes)
-		   --> Txm can use the space allocated for Txn.
-		   case2  :  n < m    and Txn is not used    (n,m  : Transmit FIFO indexes)
-		   --> Txn should be configured with the minimum space of 16 words
-	   The FIFO is used optimally when used TxFIFOs are allocated in the top
-		   of the FIFO.Ex: use EP1 and EP2 as IN instead of EP1 and EP3 as IN ones.
-	   When DMA is used 3n * FIFO locations should be reserved for internal DMA registers */
 	Tx_Offset = hpcd->Instance->GRXFSIZ;
 
-	if (fifo == 0U) {
+	if (!fifo) {
 		hpcd->Instance->DIEPTXF0_HNPTXFSIZ = ((uint32_t)size << 16) | Tx_Offset;
 	}
 	else {
-		Tx_Offset += (hpcd->Instance->DIEPTXF0_HNPTXFSIZ) >> 16;
+		Tx_Offset += (hpcd->Instance->DIEPTXF0_HNPTXFSIZ >> 16);
 		for (i = 0U; i < (fifo - 1U); i++) {
 			Tx_Offset += (hpcd->Instance->DIEPTXF[i] >> 16);
 		}
@@ -157,6 +111,7 @@ HAL_StatusTypeDef HAL_PCDEx_SetTxFiFo(PCD_HandleTypeDef *hpcd, uint8_t fifo, uin
 	}
 	return HAL_OK;
 }
+
 HAL_StatusTypeDef HAL_PCD_Start(PCD_HandleTypeDef *hpcd) {
 	USB_OTG_GlobalTypeDef *USBx = hpcd->Instance;
 	__HAL_LOCK(hpcd);
@@ -232,7 +187,7 @@ void MX_USB_DEVICE_Init(void) {
 	// USBD_LL_Init
 	hpcd_USB_OTG_FS.pData = &hUsbDeviceFS;
 	hUsbDeviceFS.pData = &hpcd_USB_OTG_FS;
-	hpcd_USB_OTG_FS.Instance = USB_OTG_FS;
+	hpcd_USB_OTG_FS.Instance = usb;
 	hpcd_USB_OTG_FS.Init.dev_endpoints = 4;
 	hpcd_USB_OTG_FS.Init.speed = PCD_SPEED_FULL;
 	hpcd_USB_OTG_FS.Init.dma_enable = DISABLE;
@@ -250,6 +205,7 @@ void MX_USB_DEVICE_Init(void) {
 	RCC->AHB2ENR |= RCC_AHB2ENR_OTGFSEN;
 	RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
 
+	// TODO
 	uint32_t prioritygroup = NVIC_GetPriorityGrouping();
 	NVIC_SetPriority(OTG_FS_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
 	NVIC_EnableIRQ(OTG_FS_IRQn);
@@ -316,16 +272,13 @@ void MX_USB_DEVICE_Init(void) {
 
 	*PCGCCTL = 0U;
 
-	// TODO<
-	(void)USB_SetDevSpeed(usb, USB_OTG_SPEED_FULL);
+	// USB_SetDevSpeed
+	device->DCFG |= USB_OTG_SPEED_FULL;
+	// ~ USB_SetDevSpeed
 
 	/* Flush the FIFOs */
-	if (USB_FlushTxFifo(usb, 0x10U) != HAL_OK) /* all Tx FIFOs */ {
-		Error_Handler();
-	}
-	if (USB_FlushRxFifo(usb) != HAL_OK) {
-		Error_Handler();
-	}
+	flush_TX_FIFOS(usb);
+	flush_RX_FIFO(usb);
 
 	device->DIEPMSK = 0U;
 	device->DOEPMSK = 0U;
@@ -378,13 +331,17 @@ void MX_USB_DEVICE_Init(void) {
 
 	hpcd_USB_OTG_FS.USB_Address = 0U;
 	hpcd_USB_OTG_FS.State = HAL_PCD_STATE_READY;
-	(void)USB_DevDisconnect(hpcd_USB_OTG_FS.Instance);
+	// USB_DevDisconnect
+	*PCGCCTL &= ~(USB_OTG_PCGCCTL_STOPCLK | USB_OTG_PCGCCTL_GATECLK);
+	device->DCTL |= USB_OTG_DCTL_SDIS;
+	// ~ USB_DevDisconnect
 	// ~ HAL_PCD_Init
-	HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80);
-	HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0, 0x40);
-	HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1, 0x80);
+	usb->GRXFSIZ = 0x80;											// TODO: argument
+	usb->DIEPTXF0_HNPTXFSIZ = ((uint32_t)0x40 << 16) | 0x80;		// TODO: argument
+	usb->DIEPTXF[0] = ((uint32_t)0x80 << 16) | 0xC0;				// TODO: argument + logic to select endpoints
 	// ~ USBD_LL_Init
 	// ~ USBD_Init
+	
 
 	if (USBD_RegisterClass(&hUsbDeviceFS, &USBD_HID) != USBD_OK) {
 		Error_Handler();

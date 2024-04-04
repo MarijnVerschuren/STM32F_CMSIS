@@ -20,15 +20,16 @@
 #define BTN_PIN 0
 
 
-uint8_t HID_Buffer[8] = { 0x02, 0, 0x15, 0, 0, 0, 0, 0 };
+uint8_t HID_buffer[8] = {0, 0, 0x4, 0, 0, 0, 0, 0};
+volatile uint8_t GO = 0;
+
 extern void TIM1_UP_TIM10_IRQHandler(void) {
 	TIM10->SR &= ~TIM_SR_UIF;
 	//GPIO_toggle(LED_GPIO_PORT, LED_PIN);
 }
 extern void EXTI0_IRQHandler(void) {
 	EXTI->PR = EXTI_PR_PR0;
-	//GPIO_toggle(LED_GPIO_PORT, LED_PIN);
-	USBD_HID_SendReport(&hUsbDeviceFS, HID_Buffer, 8);
+	GO = 1;
 }
 
 int main(void) {
@@ -93,8 +94,37 @@ int main(void) {
 	// USB
 	MX_USB_DEVICE_Init();
 
+	while (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED);
+	GPIO_write(LED_GPIO_PORT, LED_PIN, 0);
+
+	uint8_t code[6] = {0, 0, 0, 0, 0, 0};
+	uint8_t i;
 	// main loop
-	for(;;) {}
+	for(;;) {
+		if (!GO) { continue; }
+
+		for (i = 0; i < 6; i++) {
+			HID_buffer[2] = code[i] + 0x1E;
+			USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+			delay_ms(18);
+			HID_buffer[2] = 0;
+			USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+			delay_ms(18);
+		}
+		HID_buffer[2] = 0x28;
+		USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+		delay_ms(18);
+		HID_buffer[2] = 0;
+		USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+		delay_ms(18);
+
+		for (i = 0; i < 6; i++) {
+			code[i] = (code[i] + 1) % 10;
+			if (code[i]) { break; }
+		}
+
+		//GO = 0;
+	}
 }
 #elif defined(STM32F3xx)
 int main(void) {}
