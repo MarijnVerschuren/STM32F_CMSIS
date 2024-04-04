@@ -411,7 +411,7 @@ extern USBD_ClassTypeDef USBD_HID;  // TODO: init
 /*!<
  * init
  * */
-void MX_USB_DEVICE_Init(void);
+void USB_device_init(USB_OTG_GlobalTypeDef*	usb);
 extern uint8_t USBD_HID_SendReport(USBD_HandleTypeDef *pdev, uint8_t *report, uint16_t len);
 
 

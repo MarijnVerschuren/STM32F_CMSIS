@@ -92,13 +92,14 @@ int main(void) {
 	*/
 
 	// USB
-	MX_USB_DEVICE_Init();
+	USB_device_init(USB_OTG_FS);
 
 	while (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED);
 	GPIO_write(LED_GPIO_PORT, LED_PIN, 0);
 
-	uint8_t code[6] = {0, 0, 0, 0, 0, 0};
+	uint8_t code[6] = {2, 1, 1, 1, 1, 1};
 	uint8_t i;
+	uint8_t delay = 18;  // min: 18
 	// main loop
 	for(;;) {
 		if (!GO) { continue; }
@@ -106,24 +107,24 @@ int main(void) {
 		for (i = 0; i < 6; i++) {
 			HID_buffer[2] = code[i] + 0x1E;
 			USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
-			delay_ms(18);
+			delay_ms(delay);
 			HID_buffer[2] = 0;
 			USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
-			delay_ms(18);
+			delay_ms(delay);
 		}
 		HID_buffer[2] = 0x28;
 		USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
-		delay_ms(18);
+		delay_ms(delay);
 		HID_buffer[2] = 0;
 		USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
-		delay_ms(18);
+		delay_ms(delay);
 
 		for (i = 0; i < 6; i++) {
 			code[i] = (code[i] + 1) % 10;
 			if (code[i]) { break; }
 		}
 
-		//GO = 0;
+		GO = 0;
 	}
 }
 #elif defined(STM32F3xx)

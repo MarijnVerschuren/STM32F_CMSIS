@@ -5,7 +5,7 @@
 #include "usb/usb.h"
 
 
-// status
+// status TODO: delete
 void /*L0*/ Error_Handler(void) {
 	for(;;);
 }
@@ -31,24 +31,16 @@ USBD_StatusTypeDef /*L2*/ USBD_Get_USB_Status(HAL_StatusTypeDef hal_status) {
 	return usb_status;
 }
 
-// macros
-
-
 /*!<
  * variables
  * */
-// L1 ========================================= /
 USBD_HandleTypeDef hUsbDeviceFS;
-
-// L2 ========================================= /
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 
-
 /*!<
- * static / hidden
+ * functions
  * */
-// L5 ========================================= /
 void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb) {
 	__IO uint32_t why = 0;  // NOTE: creating a variable IS mandatory????
 	while (!(usb->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL));	// wait for AHB master IDLE state
@@ -72,105 +64,12 @@ void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb) {
 	while (usb->GRSTCTL & USB_OTG_GRSTCTL_TXFFLSH);			// wait until reset is processed
 }
 
-// L4 ========================================= /
-HAL_StatusTypeDef USB_DevConnect(const USB_OTG_GlobalTypeDef *USBx) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	/* In case phy is stopped, ensure to ungate and restore the phy CLK */
-	USBx_PCGCCTL &= ~(USB_OTG_PCGCCTL_STOPCLK | USB_OTG_PCGCCTL_GATECLK);
-	USBx_DEVICE->DCTL &= ~USB_OTG_DCTL_SDIS;
-	return HAL_OK;
-}
-HAL_StatusTypeDef USB_EnableGlobalInt(USB_OTG_GlobalTypeDef *USBx) {
-	USBx->GAHBCFG |= USB_OTG_GAHBCFG_GINT;
-	return HAL_OK;
-}
-#define __HAL_PCD_ENABLE(__HANDLE__)                       (void)USB_EnableGlobalInt ((__HANDLE__)->Instance)
-HAL_StatusTypeDef USB_DisableGlobalInt(USB_OTG_GlobalTypeDef *USBx) {
-	USBx->GAHBCFG &= ~USB_OTG_GAHBCFG_GINT;
-	return HAL_OK;
-}
-#define __HAL_PCD_DISABLE(__HANDLE__)                      (void)USB_DisableGlobalInt ((__HANDLE__)->Instance)
-
-// L3 ========================================= / // X
-HAL_StatusTypeDef HAL_PCDEx_SetTxFiFo(PCD_HandleTypeDef *hpcd, uint8_t fifo, uint16_t size) {
-	uint8_t i;
-	uint32_t Tx_Offset;
-
-	Tx_Offset = hpcd->Instance->GRXFSIZ;
-
-	if (!fifo) {
-		hpcd->Instance->DIEPTXF0_HNPTXFSIZ = ((uint32_t)size << 16) | Tx_Offset;
-	}
-	else {
-		Tx_Offset += (hpcd->Instance->DIEPTXF0_HNPTXFSIZ >> 16);
-		for (i = 0U; i < (fifo - 1U); i++) {
-			Tx_Offset += (hpcd->Instance->DIEPTXF[i] >> 16);
-		}
-		/* Multiply Tx_Size by 2 to get higher performance */
-		hpcd->Instance->DIEPTXF[fifo - 1U] = ((uint32_t)size << 16) | Tx_Offset;
-	}
-	return HAL_OK;
-}
-
-HAL_StatusTypeDef HAL_PCD_Start(PCD_HandleTypeDef *hpcd) {
-	USB_OTG_GlobalTypeDef *USBx = hpcd->Instance;
-	__HAL_LOCK(hpcd);
-
-	if (((USBx->GUSBCFG & USB_OTG_GUSBCFG_PHYSEL) != 0U) &&
-		(hpcd->Init.battery_charging_enable == 1U)) {
-		/* Enable USB Transceiver */
-		USBx->GCCFG |= USB_OTG_GCCFG_PWRDWN;
-	}
-
-	__HAL_PCD_ENABLE(hpcd);
-	(void)USB_DevConnect(hpcd->Instance);
-	__HAL_UNLOCK(hpcd);
-	return HAL_OK;
-}
-
-
-// L2 ========================================= / // X
-USBD_StatusTypeDef USBD_LL_Start(USBD_HandleTypeDef *pdev) {
-	HAL_StatusTypeDef hal_status = HAL_OK;
-	USBD_StatusTypeDef usb_status = USBD_OK;
-
-	hal_status = HAL_PCD_Start(pdev->pData);
-	usb_status =  USBD_Get_USB_Status(hal_status);
-	return usb_status;
-}
-
-
-// L1 ========================================= / // X
-USBD_StatusTypeDef USBD_RegisterClass(USBD_HandleTypeDef *pdev, USBD_ClassTypeDef *pclass) {
-	uint16_t len = 0U;
-	if (pclass == NULL) {
-		return USBD_FAIL;
-	}
-
-	/* link the class to the USB Device handle */
-	pdev->pClass[0] = pclass;
-
-	/* Get Device Configuration Descriptor */
-	if (pdev->pClass[pdev->classId]->GetFSConfigDescriptor != NULL) {
-		pdev->pConfDesc = (void *)pdev->pClass[pdev->classId]->GetFSConfigDescriptor(&len);
-	}
-
-	/* Increment the NumClasses */
-	pdev->NumClasses ++;
-	return USBD_OK;
-}
-USBD_StatusTypeDef USBD_Start(USBD_HandleTypeDef *pdev) {
-	/* Start the low level driver  */
-	return USBD_LL_Start(pdev);
-}
-
 
 /*!<
  * init
- * */  // L0 ================================== / // X
-void MX_USB_DEVICE_Init(void) {
+ * */
+void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	uint8_t i;
-	USB_OTG_GlobalTypeDef*		usb =		USB_OTG_FS;
 	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
 	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE);
 	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE);
@@ -213,7 +112,7 @@ void MX_USB_DEVICE_Init(void) {
 
 	hpcd_USB_OTG_FS.State = HAL_PCD_STATE_BUSY;
 	hpcd_USB_OTG_FS.Init.dma_enable = 0U;
-	__HAL_PCD_DISABLE(&hpcd_USB_OTG_FS);
+	usb->GAHBCFG &= ~USB_OTG_GAHBCFG_GINT;
 
 	// USB_CoreInit
 	usb->GUSBCFG |= USB_OTG_GUSBCFG_PHYSEL;
@@ -341,12 +240,33 @@ void MX_USB_DEVICE_Init(void) {
 	usb->DIEPTXF[0] = ((uint32_t)0x80 << 16) | 0xC0;				// TODO: argument + logic to select endpoints
 	// ~ USBD_LL_Init
 	// ~ USBD_Init
-	
 
-	if (USBD_RegisterClass(&hUsbDeviceFS, &USBD_HID) != USBD_OK) {
-		Error_Handler();
+	// USBD_RegisterClass
+	uint16_t len = 0U;
+	hUsbDeviceFS.pClass[0] = &USBD_HID;
+	if (USBD_HID.GetFSConfigDescriptor != NULL) {
+		hUsbDeviceFS.pConfDesc = (void*)USBD_HID.GetFSConfigDescriptor(&len);
 	}
-	if (USBD_Start(&hUsbDeviceFS) != USBD_OK) {
-		Error_Handler();
+	hUsbDeviceFS.NumClasses++;
+	// ~ USBD_RegisterClass
+
+	// USBD_Start
+	// USBD_LL_Start
+	// HAL_PCD_Start
+	PCD_HandleTypeDef* hpcd = hUsbDeviceFS.pData;
+	if (((usb->GUSBCFG & USB_OTG_GUSBCFG_PHYSEL) != 0U) &&
+		(hpcd_USB_OTG_FS.Init.battery_charging_enable == 1U)) {
+		/* Enable USB Transceiver */
+		usb->GCCFG |= USB_OTG_GCCFG_PWRDWN;
 	}
+
+	usb->GAHBCFG |= USB_OTG_GAHBCFG_GINT;
+
+	// USB_DevConnect
+	*PCGCCTL &= ~(USB_OTG_PCGCCTL_STOPCLK | USB_OTG_PCGCCTL_GATECLK);
+	device->DCTL &= ~USB_OTG_DCTL_SDIS;
+	// ~ USB_DevConnect
+	// ~ HAL_PCD_Start
+	// ~ USBD_LL_Start
+	// ~ USBD_Start
 }
