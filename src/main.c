@@ -35,13 +35,11 @@ extern void EXTI0_IRQHandler(void) {
 int main(void) {
 	// sys_clock: 25Mhz / 25 * 192 / 2 = 96Mhz
 	// usb_clock: 25Mhz / 25 * 192 / 4 = 48Mhz
-	SYS_CLK_Config_t* sys_config = new_SYS_CLK_config();
-	set_SYS_PLL_config(sys_config, 25, 192, PLL_P_DIV2, 4, PLL_SRC_HSE);
-	set_SYS_CLOCK_config(sys_config, SYS_CLK_SRC_PLL, AHB_CLK_NO_DIV, APBx_CLK_DIV2, APBx_CLK_NO_DIV, 0);
-	set_SYS_FLASH_config(sys_config, FLASH_LATENCY4, 1, 1, 1);  // latency is set automatically (when need be)
-	set_SYS_tick_config(sys_config, 1, 1, NULL);
-	sys_clock_init(sys_config);
-	free(sys_config);
+	set_SYS_PLL_config(25, 192, PLL_P_DIV2, 4, PLL_SRC_HSE);
+	set_SYS_CLOCK_config(SYS_CLK_SRC_PLL, AHB_CLK_NO_DIV, APBx_CLK_DIV2, APBx_CLK_NO_DIV, 0);
+	set_SYS_FLASH_config(FLASH_LATENCY4, 1, 1, 1);  // latency is set automatically (when need be)
+	set_SYS_tick_config(1, 1, NULL);
+	sys_clock_init();
 
 	// GPIO input / output
 	config_GPIO(LED_GPIO_PORT, LED_PIN, GPIO_output, GPIO_no_pull, GPIO_push_pull);
@@ -93,17 +91,18 @@ int main(void) {
 
 	// USB
 	USB_device_init(USB_OTG_FS);
-
+USB_OFF:
+	GPIO_write(LED_GPIO_PORT, LED_PIN, 1);
 	while (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED);
 	GPIO_write(LED_GPIO_PORT, LED_PIN, 0);
 
-	uint8_t code[6] = {5, 5, 5, 5, 5, 5};
+	uint8_t code[6] = {7, 7, 7, 6, 6, 6};
 	uint8_t i;
 	uint8_t delay = 20;  // min: 18
 	// main loop
 	for(;;) {
+		if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) { goto USB_OFF; }
 		if (!GO) { continue; }
-
 		for (i = 0; i < 6; i++) {
 			HID_buffer[2] = code[i] + 0x1E;
 			USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);

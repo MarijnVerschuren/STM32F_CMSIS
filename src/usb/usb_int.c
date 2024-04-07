@@ -1299,13 +1299,6 @@ USBD_StatusTypeDef USBD_LL_Resume(USBD_HandleTypeDef *pdev) {
 
 	return USBD_OK;
 }
-USBD_StatusTypeDef USBD_LL_Suspend(USBD_HandleTypeDef *pdev) {
-	if (pdev->dev_state != USBD_STATE_SUSPENDED) {
-		pdev->dev_old_state = pdev->dev_state;
-	}
-	pdev->dev_state = USBD_STATE_SUSPENDED;
-	return USBD_OK;
-}
 USBD_StatusTypeDef USBD_LL_DevConnected(USBD_HandleTypeDef *pdev) {
 	/* Prevent unused argument compilation warning */
 	UNUSED(pdev);
@@ -1374,36 +1367,6 @@ void HAL_PCD_ResumeCallback(PCD_HandleTypeDef *hpcd) {
 }
 void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd) {
 	USBD_LL_DevConnected((USBD_HandleTypeDef*)hpcd->pData);
-}
-void *USB_ReadPacket(const USB_OTG_GlobalTypeDef *USBx, uint8_t *dest, uint16_t len) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	uint8_t *pDest = dest;
-	uint32_t pData;
-	uint32_t i;
-	uint32_t count32b = (uint32_t)len >> 2U;
-	uint16_t remaining_bytes = len % 4U;
-
-	for (i = 0U; i < count32b; i++) {
-		__UNALIGNED_UINT32_WRITE(pDest, USBx_DFIFO(0U));
-		pDest++;
-		pDest++;
-		pDest++;
-		pDest++;
-	}
-
-	/* When Number of data is not word aligned, read the remaining byte */
-	if (remaining_bytes != 0U) {
-		i = 0U;
-		__UNALIGNED_UINT32_WRITE(&pData, USBx_DFIFO(0U));
-		do {
-			*(uint8_t *)pDest = (uint8_t)(pData >> (8U * (uint8_t)(i)));
-			i++;
-			pDest++;
-			remaining_bytes--;
-		} while (remaining_bytes != 0U);
-	}
-
-	return ((void *)pDest);
 }
 uint32_t USB_ReadDevOutEPInterrupt(const USB_OTG_GlobalTypeDef *USBx, uint8_t epnum) {
 	uint32_t USBx_BASE = (uint32_t)USBx;
@@ -1567,19 +1530,6 @@ static HAL_StatusTypeDef PCD_WriteEmptyTxFifo(PCD_HandleTypeDef *hpcd, uint32_t 
 	UNUSED(hpcd);
 	UNUSED(msg);
 }
-#define __HAL_PCD_GATE_PHYCLOCK(__HANDLE__) *(__IO uint32_t *)((uint32_t)((__HANDLE__)->Instance) + USB_OTG_PCGCCTL_BASE) |= USB_OTG_PCGCCTL_STOPCLK
-void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd) {
-	/* Inform USB library that core enters in suspend Mode. */
-	USBD_LL_Suspend((USBD_HandleTypeDef*)hpcd->pData);
-	__HAL_PCD_GATE_PHYCLOCK(hpcd);
-	/* Enter in STOP mode. */
-	/* USER CODE BEGIN 2 */
-	if (hpcd->Init.low_power_enable) {
-		/* Set SLEEPDEEP bit and SleepOnExit of Cortex System Control Register. */
-		SCB->SCR |= (uint32_t)((uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
-	}
-	/* USER CODE END 2 */
-}
 HAL_StatusTypeDef USB_ActivateSetup(const USB_OTG_GlobalTypeDef *USBx) {
 	uint32_t USBx_BASE = (uint32_t)USBx;
 	/* Set the MPS of the IN EP0 to 64 bytes */
@@ -1668,88 +1618,102 @@ HAL_StatusTypeDef USB_SetTurnaroundTime(USB_OTG_GlobalTypeDef *USBx, uint32_t hc
 uint32_t HAL_RCC_GetHCLKFreq(void) {
 	return SYS_clock_frequency;  // TODO: valid?????
 }
-HAL_StatusTypeDef HAL_PCD_EP_Abort(PCD_HandleTypeDef *hpcd, uint8_t ep_addr) {
-	HAL_StatusTypeDef ret;
-	PCD_EPTypeDef *ep;
-	if ((0x80U & ep_addr) == 0x80U) {
-		ep = &hpcd->IN_ep[ep_addr & EP_ADDR_MSK];
-	}
-	else {
-		ep = &hpcd->OUT_ep[ep_addr & EP_ADDR_MSK];
-	}
-	/* Stop Xfer */
-	ret = USB_EPStopXfer(hpcd->Instance, ep);
-	return ret;
-}
 
 extern void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb);
 extern void flush_TX_FIFO(USB_OTG_GlobalTypeDef* usb, uint8_t ep);
 extern void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb);
 
 
-// L1.1 ========================================= /  // TODO<
+// L1.2 ========================================= /
+
+
+// L1.1 ========================================= /
 static inline void USB_OTG_IRQ(USBD_HandleTypeDef* pdev) {
 	// TODO: redo handle and make it possible to pass usb ptr
 	uint32_t tmp = USB_OTG_FS->GOTGINT;
 	if (tmp & USB_OTG_GOTGINT_SEDET) {
 		pdev->dev_state = USBD_STATE_DEFAULT;
-		if (pdev->pClass[0] == NULL) {
-			pdev->pClass[0]->DeInit(pdev, (uint8_t)pdev->dev_config);
-			// TODO: error
-		}
+		if (pdev->pClass[0] == NULL) { return; }
+		pdev->pClass[0]->DeInit(pdev, (uint8_t)pdev->dev_config);
 	}
 	USB_OTG_FS->GOTGINT |= tmp;
 }
 static inline void USB_SOF_IRQ(USBD_HandleTypeDef* pdev) {
 	// TODO: redo handle and make it possible to pass usb ptr
 	if (pdev->dev_state == USBD_STATE_CONFIGURED) {
-		if (pdev->pClass[0] != NULL) {
-			if (pdev->pClass[0]->SOF != NULL) {
-				(void)pdev->pClass[0]->SOF(pdev);
-			}
-		}
+		if (pdev->pClass[0] == NULL)		{ return; }
+		if (pdev->pClass[0]->SOF == NULL)	{ return; }
+		(void)pdev->pClass[0]->SOF(pdev);
 	}
 	USB_OTG_FS->GINTSTS |= USB_OTG_GINTSTS_SOF;
 }
 static inline void USB_receive_packet_IRQ(PCD_HandleTypeDef* hpcd) {
+	// TODO: redo handle and make it possible to pass usb ptr
 	USB_OTG_GlobalTypeDef*	usb = hpcd->Instance;
-	usb->GINTMSK &= ~USB_OTG_GINTSTS_RXFLVL;
+	usb->GINTMSK &= ~USB_OTG_GINTMSK_RXFLVLM;
 	uint32_t				tmp = usb->GRXSTSP;
 	GRXSTS_t				status = *((GRXSTS_t*)&tmp);
-	USB_OTG_EPTypeDef*		ep = &hpcd->OUT_ep[status.EPNUM];
+	USB_OTG_EPTypeDef*		ep = &hpcd->OUT_ep[status.EPNUM];  // TODO: redo handle
+	volatile uint32_t* FIFO = (void*)(((uint32_t)USB_OTG_FS) + USB_OTG_FIFO_BASE);
 
-	// TODO: USB_ReadPacket!!!!
-	if (status.PKTSTS ==  STS_DATA_UPDT) {
-		if (status.BCNT) {
-			(void)USB_ReadPacket(usb, ep->xfer_buff, status.BCNT);
-			ep->xfer_buff += status.BCNT;
-			ep->xfer_count += status.BCNT;
-		}
-	}
-	else if (status.PKTSTS == STS_SETUP_UPDT) {
-		(void)USB_ReadPacket(usb, (uint8_t *)hpcd->Setup, 8U);
-		ep->xfer_count += status.BCNT;
+	switch (status.PKTSTS) {
+	case STS_DATA_UPDT:
+		if (!status.BCNT) { break; }
+		const uint32_t	words = status.BCNT >> 2U;
+		const uint8_t	bytes = status.BCNT & 0b11UL;
+		for (uint32_t i = 0UL; i < words; i++) {
+			__UNALIGNED_UINT32_WRITE(ep->xfer_buff, *FIFO);
+			// 4x inc is faster than an iadd due to pipelining
+			ep->xfer_buff++; ep->xfer_buff++;
+			ep->xfer_buff++; ep->xfer_buff++;
+		} if (bytes) {
+			uint32_t tmp; __UNALIGNED_UINT32_WRITE(&tmp, *FIFO);
+			for (uint8_t i = 0; i < bytes; i++) {
+				*(uint8_t*)ep->xfer_buff++ = (uint8_t)(tmp >> (8U * i));
+			}
+		} ep->xfer_count += status.BCNT;
+		break;
+	case STS_SETUP_UPDT:
+		__UNALIGNED_UINT32_WRITE(&hpcd->Setup[0], *FIFO);
+		__UNALIGNED_UINT32_WRITE(&hpcd->Setup[1], *FIFO);
+		ep->xfer_count += 8;
+		break;
+	default: break;
 	}
 
-	usb->GINTMSK |= USB_OTG_GINTSTS_RXFLVL;
+	usb->GINTMSK |= USB_OTG_GINTMSK_RXFLVLM;
 }
 static inline void USB_global_NAK_OUT_IRQ(PCD_HandleTypeDef* hpcd) {
+	// TODO: redo handle and make it possible to pass usb ptr
 	uint8_t					ep_num;
-	USB_OTG_GlobalTypeDef*	USBx = hpcd->Instance;
-	USBx->GINTMSK &= ~USB_OTG_GINTMSK_GONAKEFFM;
+	PCD_EPTypeDef*			ep;
+	USB_OTG_GlobalTypeDef*	usb = hpcd->Instance;
+	usb->GINTMSK &= ~USB_OTG_GINTMSK_GONAKEFFM;
 	for (ep_num = 1U; ep_num < hpcd->Init.dev_endpoints; ep_num++) {
-		if (hpcd->OUT_ep[ep_num].is_iso_incomplete == 1U) {
-			(void)HAL_PCD_EP_Abort(hpcd, (uint8_t)ep_num);
-		}
+		ep = &hpcd->OUT_ep[ep_num];
+		if (ep->is_iso_incomplete == 1U) { continue; }
+		USB_EPStopXfer(usb, ep);
 	}
 }
 static inline void USB_suspend_IRQ(PCD_HandleTypeDef* hpcd) {
-	uint32_t USBx_BASE = (uint32_t)hpcd->Instance;
+	// TODO: redo handle and make it possible to pass usb ptr
+	USB_OTG_GlobalTypeDef* usb = hpcd->Instance;
+	uint32_t USBx_BASE = (uint32_t)usb;
 	if ((USBx_DEVICE->DSTS & USB_OTG_DSTS_SUSPSTS) == USB_OTG_DSTS_SUSPSTS) {
-		HAL_PCD_SuspendCallback(hpcd);
+		__IO uint32_t* PCGCCTL =	(void*)(USBx_BASE + USB_OTG_PCGCCTL_BASE);
+		USBD_HandleTypeDef* pdev = hpcd->pData;
+		if (pdev->dev_state != USBD_STATE_SUSPENDED) {
+			pdev->dev_old_state = pdev->dev_state;
+		}
+		pdev->dev_state = USBD_STATE_SUSPENDED;
+		*PCGCCTL |= USB_OTG_PCGCCTL_STOPCLK;
+		if (hpcd->Init.low_power_enable) {
+			SCB->SCR |= (uint32_t)((uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
+		}
 	}
-	__HAL_PCD_CLEAR_FLAG(hpcd, USB_OTG_GINTSTS_USBSUSP);
+	usb->GINTSTS |= USB_OTG_GINTSTS_USBSUSP;
 }
+// TODO<
 static inline void USB_reset_IRQ(PCD_HandleTypeDef* hpcd) {
 	uint32_t USBx_BASE = (uint32_t)hpcd->Instance;
 	uint32_t i;
@@ -1940,14 +1904,15 @@ static inline void OEP_common_handler(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 }
 static inline void USB_incomplete_ISO_IN_IRQ(PCD_HandleTypeDef* hpcd) {
 	uint32_t USBx_BASE = (uint32_t)hpcd->Instance;
+	PCD_EPTypeDef*			ep;
 	uint8_t ep_num;
 	uint32_t RegVal;
 	for (ep_num = 1U; ep_num < hpcd->Init.dev_endpoints; ep_num++) {
 		RegVal = USBx_INEP(ep_num)->DIEPCTL;
-		if ((hpcd->IN_ep[ep_num].type == EP_TYPE_ISOC) && ((RegVal & USB_OTG_DIEPCTL_EPENA) == USB_OTG_DIEPCTL_EPENA)) {
-			hpcd->IN_ep[ep_num].is_iso_incomplete = 1U;
-			(void)HAL_PCD_EP_Abort(hpcd, (uint8_t)(ep_num | 0x80U));
-		}
+		ep = &hpcd->IN_ep[ep_num];
+		if ((ep->type != EP_TYPE_ISOC) || ((RegVal & USB_OTG_DIEPCTL_EPENA) != USB_OTG_DIEPCTL_EPENA)) { continue; }
+		ep->is_iso_incomplete = 1U;
+		USB_EPStopXfer(hpcd->Instance, ep);
 	}
 	__HAL_PCD_CLEAR_FLAG(hpcd, USB_OTG_GINTSTS_IISOIXFR);
 }
@@ -2048,4 +2013,22 @@ static void HAL_PCD_IRQHandler(PCD_HandleTypeDef* hpcd) {
 
 void OTG_FS_IRQHandler(void) {
 	HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
+}
+
+
+// L1 WKUP
+#define USB_OTG_FS_WAKEUP_EXTI_LINE                                   (0x1U << 18)  /*!< USB FS EXTI Line WakeUp Interrupt */
+#define __HAL_PCD_UNGATE_PHYCLOCK(__HANDLE__) \
+  *(__IO uint32_t *)((uint32_t)((__HANDLE__)->Instance) + USB_OTG_PCGCCTL_BASE) &= ~(USB_OTG_PCGCCTL_STOPCLK)
+#define __HAL_USB_OTG_FS_WAKEUP_EXTI_CLEAR_FLAG()   EXTI->PR = USB_OTG_FS_WAKEUP_EXTI_LINE
+
+
+// L0 WKUP
+void OTG_FS_WKUP_IRQHandler(void) {
+	if ((&hpcd_USB_OTG_FS)->Init.low_power_enable) {
+		SCB->SCR &= (uint32_t)~((uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
+		sys_clock_init();
+	}
+	__HAL_PCD_UNGATE_PHYCLOCK(&hpcd_USB_OTG_FS);
+	__HAL_USB_OTG_FS_WAKEUP_EXTI_CLEAR_FLAG();
 }

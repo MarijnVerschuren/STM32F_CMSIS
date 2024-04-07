@@ -65,6 +65,16 @@ void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb) {
 }
 
 
+// L1
+#define USB_OTG_FS_WAKEUP_EXTI_LINE                                   (0x1U << 18)  /*!< USB FS EXTI Line WakeUp Interrupt */
+#define __HAL_USB_OTG_FS_WAKEUP_EXTI_CLEAR_FLAG()   EXTI->PR = USB_OTG_FS_WAKEUP_EXTI_LINE
+#define __HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_RISING_EDGE() \
+  do { \
+    EXTI->FTSR &= ~(USB_OTG_FS_WAKEUP_EXTI_LINE); \
+    EXTI->RTSR |= USB_OTG_FS_WAKEUP_EXTI_LINE; \
+  } while(0U)
+#define __HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_IT()    EXTI->IMR |= USB_OTG_FS_WAKEUP_EXTI_LINE
+
 /*!<
  * init
  * */
@@ -92,7 +102,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	hpcd_USB_OTG_FS.Init.dma_enable = DISABLE;
 	hpcd_USB_OTG_FS.Init.phy_itface = PCD_PHY_EMBEDDED;
 	hpcd_USB_OTG_FS.Init.Sof_enable = DISABLE;
-	hpcd_USB_OTG_FS.Init.low_power_enable = DISABLE;
+	hpcd_USB_OTG_FS.Init.low_power_enable = ENABLE;  // TODO!!!
 	hpcd_USB_OTG_FS.Init.lpm_enable = DISABLE;
 	hpcd_USB_OTG_FS.Init.vbus_sensing_enable = DISABLE;
 	hpcd_USB_OTG_FS.Init.use_dedicated_ep1 = DISABLE;
@@ -108,6 +118,13 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	uint32_t prioritygroup = NVIC_GetPriorityGrouping();
 	NVIC_SetPriority(OTG_FS_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
 	NVIC_EnableIRQ(OTG_FS_IRQn);
+	if(hpcd_USB_OTG_FS.Init.low_power_enable == 1) {
+		__HAL_USB_OTG_FS_WAKEUP_EXTI_CLEAR_FLAG();
+		__HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_RISING_EDGE();
+		__HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_IT();
+		NVIC_SetPriority(OTG_FS_WKUP_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
+		NVIC_EnableIRQ(OTG_FS_WKUP_IRQn);
+	}
 	// ~ HAL_PCD_Msp_Init
 
 	hpcd_USB_OTG_FS.State = HAL_PCD_STATE_BUSY;
@@ -214,10 +231,17 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	usb->GINTMSK = 0U;
 	usb->GINTSTS = 0xBFFFFFFFU;
 
-	usb->GINTMSK |= USB_OTG_GINTMSK_USBSUSPM | USB_OTG_GINTMSK_USBRST | USB_OTG_GINTMSK_RXFLVLM |
-					 USB_OTG_GINTMSK_ENUMDNEM | USB_OTG_GINTMSK_IEPINT |
-					 USB_OTG_GINTMSK_OEPINT   | USB_OTG_GINTMSK_IISOIXFRM |
-					 USB_OTG_GINTMSK_PXFRM_IISOOXFRM | USB_OTG_GINTMSK_WUIM;
+	usb->GINTMSK |= (
+		USB_OTG_GINTMSK_USBSUSPM		|
+		USB_OTG_GINTMSK_USBRST			|
+		USB_OTG_GINTMSK_RXFLVLM			|
+		USB_OTG_GINTMSK_ENUMDNEM		|
+		USB_OTG_GINTMSK_IEPINT			|
+		USB_OTG_GINTMSK_OEPINT			|
+		USB_OTG_GINTMSK_IISOIXFRM		|
+		USB_OTG_GINTMSK_PXFRM_IISOOXFRM	|
+		USB_OTG_GINTMSK_WUIM
+	);
 
 	if (hpcd_USB_OTG_FS.Init.Sof_enable != 0U) {
 		usb->GINTMSK |= USB_OTG_GINTMSK_SOFM;
