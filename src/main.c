@@ -96,7 +96,7 @@ USB_OFF:
 	while (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED);
 	GPIO_write(LED_GPIO_PORT, LED_PIN, 0);
 
-	uint8_t code[6] = {7, 7, 7, 6, 6, 6};
+	uint8_t code[6] = {8, 7, 7, 7, 7, 7};
 	uint8_t i;
 	uint8_t delay = 20;  // min: 18
 	// main loop
