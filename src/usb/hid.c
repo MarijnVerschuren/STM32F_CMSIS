@@ -159,7 +159,10 @@ __ALIGN_BEGIN static uint8_t USBD_HID_Desc[USB_HID_DESC_SIZ] __ALIGN_END = {
 extern HAL_StatusTypeDef HAL_PCD_EP_Close(PCD_HandleTypeDef *hpcd, uint8_t ep_addr);
 extern HAL_StatusTypeDef HAL_PCD_EP_Open(PCD_HandleTypeDef *hpcd, uint8_t ep_addr, uint16_t ep_mps, uint8_t ep_type);
 extern USBD_StatusTypeDef USBD_CtlSendData(USBD_HandleTypeDef *pdev, uint8_t *pbuf, uint32_t len);
-extern void USBD_CtlError(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req);
+
+extern void stall_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
+extern void stall_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
+extern void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
 
 
 
@@ -277,7 +280,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					break;
 
 				default:
-					USBD_CtlError(pdev, req);
+					stall_EP(pdev->pData, 0x0U);
 					ret = USBD_FAIL;
 					break;
 			}
@@ -292,7 +295,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					}
 					else
 					{
-						USBD_CtlError(pdev, req);
+						stall_EP(pdev->pData, 0x0U);
 						ret = USBD_FAIL;
 					}
 					break;
@@ -310,7 +313,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					}
 					else
 					{
-						USBD_CtlError(pdev, req);
+						stall_EP(pdev->pData, 0x0U);
 						ret = USBD_FAIL;
 						break;
 					}
@@ -324,7 +327,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					}
 					else
 					{
-						USBD_CtlError(pdev, req);
+						stall_EP(pdev->pData, 0x0U);
 						ret = USBD_FAIL;
 					}
 					break;
@@ -336,7 +339,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					}
 					else
 					{
-						USBD_CtlError(pdev, req);
+						stall_EP(pdev->pData, 0x0U);
 						ret = USBD_FAIL;
 					}
 					break;
@@ -345,14 +348,14 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					break;
 
 				default:
-					USBD_CtlError(pdev, req);
+					stall_EP(pdev->pData, 0x0U);
 					ret = USBD_FAIL;
 					break;
 			}
 			break;
 
 		default:
-			USBD_CtlError(pdev, req);
+			stall_EP(pdev->pData, 0x0U);
 			ret = USBD_FAIL;
 			break;
 	}
