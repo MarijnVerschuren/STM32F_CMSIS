@@ -156,8 +156,8 @@ __ALIGN_BEGIN static uint8_t USBD_HID_Desc[USB_HID_DESC_SIZ] __ALIGN_END = {
 
 
 // defs
-extern USBD_StatusTypeDef USBD_LL_CloseEP(USBD_HandleTypeDef *pdev, uint8_t ep_addr);
-extern USBD_StatusTypeDef USBD_LL_OpenEP(USBD_HandleTypeDef *pdev, uint8_t ep_addr, uint8_t ep_type, uint16_t ep_mps);
+extern HAL_StatusTypeDef HAL_PCD_EP_Close(PCD_HandleTypeDef *hpcd, uint8_t ep_addr);
+extern HAL_StatusTypeDef HAL_PCD_EP_Open(PCD_HandleTypeDef *hpcd, uint8_t ep_addr, uint16_t ep_mps, uint8_t ep_type);
 extern USBD_StatusTypeDef USBD_CtlSendData(USBD_HandleTypeDef *pdev, uint8_t *pbuf, uint32_t len);
 extern void USBD_CtlError(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req);
 
@@ -222,7 +222,7 @@ static uint8_t USBD_HID_Init(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
 	pdev->ep_in[HIDInEpAdd & 0xFU].bInterval = HID_FS_BINTERVAL;
 
 	/* Open EP IN */
-	(void)USBD_LL_OpenEP(pdev, HIDInEpAdd, USBD_EP_TYPE_INTR, HID_EPIN_SIZE);
+	(void)HAL_PCD_EP_Open(pdev->pData, HIDInEpAdd, HID_EPIN_SIZE, USBD_EP_TYPE_INTR);
 	pdev->ep_in[HIDInEpAdd & 0xFU].is_used = 1U;
 
 	hhid->state = USBD_HID_IDLE;
@@ -232,7 +232,7 @@ static uint8_t USBD_HID_DeInit(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
 	UNUSED(cfgidx);
 
 	/* Close HID EPs */
-	(void)USBD_LL_CloseEP(pdev, HIDInEpAdd);
+	(void)HAL_PCD_EP_Close(pdev->pData, HIDInEpAdd);
 	pdev->ep_in[HIDInEpAdd & 0xFU].is_used = 0U;
 	pdev->ep_in[HIDInEpAdd & 0xFU].bInterval = 0U;
 
@@ -394,7 +394,7 @@ static uint8_t *USBD_HID_GetDeviceQualifierDesc(uint16_t *length) {
 
 
 // L0 ========================================= /
-extern USBD_StatusTypeDef USBD_LL_Transmit(USBD_HandleTypeDef *pdev, uint8_t ep_addr, uint8_t *pbuf, uint32_t size);
+extern void IN_transfer(PCD_HandleTypeDef *hpcd, uint8_t ep_num, void* buffer, uint32_t size);
 uint8_t USBD_HID_SendReport(USBD_HandleTypeDef *pdev, uint8_t *report, uint16_t len) {
 	USBD_HID_HandleTypeDef *hhid = (USBD_HID_HandleTypeDef *)pdev->pClassDataCmsit[pdev->classId];
 
@@ -405,7 +405,7 @@ uint8_t USBD_HID_SendReport(USBD_HandleTypeDef *pdev, uint8_t *report, uint16_t 
 	if (pdev->dev_state == USBD_STATE_CONFIGURED) {
 		if (hhid->state == USBD_HID_IDLE) {
 			hhid->state = USBD_HID_BUSY;
-			(void)USBD_LL_Transmit(pdev, HIDInEpAdd, report, len);
+			IN_transfer(pdev->pData, HIDInEpAdd, report, len);
 		}
 	}
 
