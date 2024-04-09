@@ -431,7 +431,7 @@ static inline void set_device_configuration(USBD_HandleTypeDef* pdev) {
 			return IN_transfer(pdev->pData, 0x00U, NULL, 0U);
 		}
 		pdev->dev_config = config;
-		if (pdev->pClass[0]->Init(pdev, config) != USBD_OK) {
+		if (pdev->pClass[0]->Init(pdev, config)) {
 			pdev->dev_state = USBD_STATE_ADDRESSED;
 			break;
 		}
@@ -448,7 +448,7 @@ static inline void set_device_configuration(USBD_HandleTypeDef* pdev) {
 		} else if (config != pdev->dev_config) {
 			pdev->pClass[0]->DeInit(pdev, (uint8_t)pdev->dev_config);
 			pdev->dev_config = config;
-			if (pdev->pClass[0]->Init(pdev, config) != USBD_OK){
+			if (pdev->pClass[0]->Init(pdev, config)){
 				pdev->pClass[0]->DeInit(pdev, (uint8_t)pdev->dev_config);
 				pdev->dev_state = USBD_STATE_ADDRESSED;
 				break;

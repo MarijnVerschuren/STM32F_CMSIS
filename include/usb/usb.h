@@ -206,14 +206,16 @@ typedef enum {
 	RECIPIANT_ENDPOINT =	0b00010
 }	SETUP_recipiant_t;
 typedef enum {
-	GET_STATUS =			0x00,						// 2B read
-	CLEAR_FEATURE =			0x01,						// clear feature addressed by "value"
-	SET_FEATURE =			0x03,						// set feature addressed by "value"
-	SET_ADDRESS =			0x05,						// set address in "value"
-	GET_DESCRIPTOR =		0x06,						// [length]B read, descriptor type and index in "value"
-	SET_DESCRIPTOR =		0x07,						// [length]B write, descriptor type and index in "value"
-	GET_CONFIGURATION =		0x08,						// 1B read
-	SET_CONFIGURATION =		0x09,						// config addressed by "value"
+	GET_STATUS =			0x00,
+	CLEAR_FEATURE =			0x01,
+	SET_FEATURE =			0x03,
+	SET_ADDRESS =			0x05,
+	GET_DESCRIPTOR =		0x06,
+	SET_DESCRIPTOR =		0x07,
+	GET_CONFIGURATION =		0x08,
+	SET_CONFIGURATION =		0x09,
+	GET_INTERFACE =			0x0A,
+	SET_INTERFACE =			0x0B
 }	SETUP_command_t;
 
 
@@ -308,14 +310,6 @@ typedef struct {
 	uint16_t bInterval;
 } USBD_EndpointTypeDef;
 
-typedef  struct  usb_setup_req {
-	uint8_t   bmRequest;
-	uint8_t   bRequest;
-	uint16_t  wValue;
-	uint16_t  wIndex;
-	uint16_t  wLength;
-} USBD_SetupReqTypedef;
-
 typedef struct {
 	uint8_t *(*GetDeviceDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
 	uint8_t *(*GetLangIDStrDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
@@ -328,22 +322,19 @@ typedef struct {
 
 typedef struct _Device_cb {
 	uint8_t (*Init)(struct _USBD_HandleTypeDef *pdev, uint8_t cfgidx);
-	uint8_t (*DeInit)(struct _USBD_HandleTypeDef *pdev, uint8_t cfgidx);
+	void (*DeInit)(struct _USBD_HandleTypeDef *pdev, uint8_t cfgidx);
 	/* Control Endpoints*/
-	uint8_t (*Setup)(struct _USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef  *req);
-	uint8_t (*EP0_TxSent)(struct _USBD_HandleTypeDef *pdev);
-	uint8_t (*EP0_RxReady)(struct _USBD_HandleTypeDef *pdev);
+	void (*Setup)(struct _USBD_HandleTypeDef *pdev, setup_header_t* req);
+	void (*EP0_TxSent)(struct _USBD_HandleTypeDef *pdev);
+	void (*EP0_RxReady)(struct _USBD_HandleTypeDef *pdev);
 	/* Class Specific Endpoints*/
-	uint8_t (*DataIn)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
-	uint8_t (*DataOut)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
-	uint8_t (*SOF)(struct _USBD_HandleTypeDef *pdev);
-	uint8_t (*IsoINIncomplete)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
-	uint8_t (*IsoOUTIncomplete)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
+	void (*DataIn)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
+	void (*DataOut)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
+	void (*SOF)(struct _USBD_HandleTypeDef *pdev);
+	void (*IsoINIncomplete)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
+	void (*IsoOUTIncomplete)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
 
-	uint8_t  *(*GetHSConfigDescriptor)(uint16_t *length);
 	uint8_t  *(*GetFSConfigDescriptor)(uint16_t *length);
-	uint8_t  *(*GetOtherSpeedConfigDescriptor)(uint16_t *length);
-	uint8_t  *(*GetDeviceQualifierDescriptor)(uint16_t *length);
 } USBD_ClassTypeDef;
 
 typedef struct _USBD_HandleTypeDef {
@@ -441,14 +432,11 @@ typedef struct {
 /*!<
  * variables
  * */
-// L1 ========================================= /
 extern USBD_HandleTypeDef hUsbDeviceFS;
 extern USBD_DescriptorsTypeDef FS_Desc;  // TODO: init
 
-// L2 ========================================= /
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
-// HID ======================================== /
 extern USBD_ClassTypeDef USBD_HID;  // TODO: init
 
 
@@ -456,7 +444,6 @@ extern USBD_ClassTypeDef USBD_HID;  // TODO: init
  * init
  * */
 void USB_device_init(USB_OTG_GlobalTypeDef*	usb);
-extern uint8_t USBD_HID_SendReport(USBD_HandleTypeDef *pdev, uint8_t *report, uint16_t len);
 
 
 #endif // STM32H_CMSIS_USB_F
