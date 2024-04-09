@@ -16,16 +16,123 @@
 #define STS_SETUP_UPDT                         6U
 
 
-// defs
-void IN_transfer(PCD_HandleTypeDef *hpcd, uint8_t ep_num, void* buffer, uint32_t size);
-void OUT_transfer(PCD_HandleTypeDef *hpcd, uint8_t ep_num, void* buffer, uint32_t size);
-void stall_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
-void stall_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
-void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
-void unstall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
-void unstall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
+// external functions
+extern void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb);
+extern void flush_TX_FIFO(USB_OTG_GlobalTypeDef* usb, uint8_t ep);
+extern void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb);
 
 
+// IO
+static inline void USB_write_packet(const USB_OTG_GlobalTypeDef *usb, uint8_t *src, uint8_t ep_num, uint16_t len) {
+	uint32_t*	FIFO = (uint32_t*)((uint32_t)usb + (0x1000UL * (ep_num + 1U)));
+	uint32_t	word_count;
+
+	word_count = ((uint32_t)len + 3U) / 4U;
+	for (uint32_t i = 0U; i < word_count; i++) {
+		*FIFO = __UNALIGNED_UINT32_READ(src);
+		src++; src++; src++; src++;
+	}
+}
+void IN_transfer(PCD_HandleTypeDef* hpcd, uint8_t ep_num, void* buffer, uint32_t size) {
+	ep_num &= 0xFU;
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
+	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
+
+	ep->xfer_buff =		buffer;
+	ep->xfer_len =		size;
+	ep->xfer_count =	0U;
+	ep->is_in =			1U;
+	ep->num =			ep_num;
+
+	if (!ep->xfer_len) {
+		in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_PKTCNT | USB_OTG_DIEPTSIZ_XFRSIZ);
+		in->DIEPTSIZ |= 0x1UL << USB_OTG_DIEPTSIZ_PKTCNT_Pos;
+	} else {
+		in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_XFRSIZ);
+		in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_PKTCNT);
+		if (!ep_num) {
+			if (ep->xfer_len > ep->maxpacket) { ep->xfer_len = ep->maxpacket; }
+			in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
+		} else {
+			in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (((ep->xfer_len + ep->maxpacket - 1U) / ep->maxpacket) << 19));
+		}
+		in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_XFRSIZ & ep->xfer_len);
+		if (ep->type == EP_TYPE_ISOC) {
+			in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_MULCNT);
+			in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_MULCNT & (1U << 29));
+		}
+	}
+
+	in->DIEPCTL |= (USB_OTG_DIEPCTL_CNAK | USB_OTG_DIEPCTL_EPENA);
+	if (ep->type != EP_TYPE_ISOC && ep->xfer_len) {
+		device->DIEPEMPMSK |= (0x01UL << ep->num);
+	}
+	else {
+		if ((device->DSTS & (1U << 8)) == 0U)	{ in->DIEPCTL |= USB_OTG_DIEPCTL_SODDFRM; }
+		else									{ in->DIEPCTL |= USB_OTG_DIEPCTL_SD0PID_SEVNFRM; }
+		USB_write_packet(usb, ep->xfer_buff, ep->num, (uint16_t)ep->xfer_len);
+	}
+
+}
+void OUT_transfer(PCD_HandleTypeDef* hpcd, uint8_t ep_num, void* buffer, uint32_t size) {
+	ep_num &= 0xFU;
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
+	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
+
+	ep->xfer_buff =		buffer;
+	ep->xfer_len =		size;
+	ep->xfer_count =	0U;
+	ep->is_in =			0U;
+	ep->num =			ep_num;
+
+	out->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_XFRSIZ | USB_OTG_DOEPTSIZ_PKTCNT);
+	if (!ep_num) {
+		if (ep->xfer_len) { ep->xfer_len = ep->maxpacket; }
+		ep->xfer_size = ep->maxpacket;
+		out->DOEPTSIZ |= (
+				(USB_OTG_DOEPTSIZ_XFRSIZ & ep->xfer_size)	|
+				(USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19))
+		);
+	} else {
+		if (!ep->xfer_len) {
+			out->DOEPTSIZ |= (
+					(USB_OTG_DOEPTSIZ_XFRSIZ & ep->maxpacket)	|
+					(USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19))
+			);
+		} else {
+			uint16_t pktcnt = (uint16_t)((ep->xfer_len + ep->maxpacket - 1U) / ep->maxpacket);
+			ep->xfer_size = ep->maxpacket * pktcnt;
+			out->DOEPTSIZ |= USB_OTG_DOEPTSIZ_PKTCNT & ((uint32_t)pktcnt << 19);
+			out->DOEPTSIZ |= USB_OTG_DOEPTSIZ_XFRSIZ & ep->xfer_size;
+		}
+	}
+	if (ep->type == EP_TYPE_ISOC) {
+		if ((device->DSTS & (1U << 8)) == 0U)	{ out->DOEPCTL |= USB_OTG_DOEPCTL_SODDFRM; }
+		else									{ out->DOEPCTL |= USB_OTG_DOEPCTL_SD0PID_SEVNFRM; }
+	}
+	out->DOEPCTL |= (USB_OTG_DOEPCTL_CNAK | USB_OTG_DOEPCTL_EPENA);
+}
+void IEP0_transfer(USBD_HandleTypeDef* handle, void* buffer, uint32_t size) {
+	handle->ep0_state = USBD_EP0_DATA_IN;
+	handle->ep_in[0].total_length = size;
+	handle->ep_in[0].rem_length = size;
+	IN_transfer(handle->pData, 0x00U, buffer, size);
+}
+void start_OEP0(USB_OTG_GlobalTypeDef* usb) {
+	USB_OTG_OUTEndpointTypeDef*	out = (void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE);
+	out->DOEPTSIZ = (
+			(USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19)) |
+			(3U * 8U) |
+			USB_OTG_DOEPTSIZ_STUPCNT
+	);
+}
+
+
+// EP init
 void open_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type) {
 	ep_num &= 0xF;
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
@@ -111,22 +218,75 @@ void close_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num) {
 		USB_OTG_DOEPCTL_EPTYP
 	);
 }
-void IEP0_transfer(USBD_HandleTypeDef* handle, void* buffer, uint32_t size) {
-	handle->ep0_state = USBD_EP0_DATA_IN;
-	handle->ep_in[0].total_length = size;
-	handle->ep_in[0].rem_length = size;
-	IN_transfer(handle->pData, 0x00U, buffer, size);
+
+
+// stall/un-stall
+void stall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
+	ep_num &= 0xFU;  // TODO: needed?
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
+
+	ep->is_in =		1U;
+	ep->is_stall =	1U;
+	ep->num =		ep_num;
+
+	if (!(in->DIEPCTL & USB_OTG_DIEPCTL_EPENA) && ep_num) {
+		in->DIEPCTL &= ~(USB_OTG_DIEPCTL_EPDIS);
+	} in->DIEPCTL |= USB_OTG_DIEPCTL_STALL;
+
+	if (!ep_num) { start_OEP0(usb); }
 }
-void start_OEP0(USB_OTG_GlobalTypeDef* usb) {
-	USB_OTG_OUTEndpointTypeDef*	out = (void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE);
-	out->DOEPTSIZ = (
-		(USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19)) |
-		(3U * 8U) |
-		USB_OTG_DOEPTSIZ_STUPCNT
-	);
+void stall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
+	ep_num &= 0xFU;  // TODO: needed?
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
+
+	ep->is_in =		0U;
+	ep->is_stall =	1U;
+	ep->num =		ep_num;
+
+	if (!(out->DOEPCTL & USB_OTG_DOEPCTL_EPENA) && ep_num) {
+		out->DOEPCTL &= ~(USB_OTG_DOEPCTL_EPDIS);
+	} out->DOEPCTL |= USB_OTG_DOEPCTL_STALL;
+
+	if (!ep_num) { start_OEP0(usb); }
+}
+void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
+	stall_IEP(hpcd, ep_num); stall_OEP(hpcd, ep_num);
+}
+void unstall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
+	ep_num &= 0xFU;  // TODO: needed?
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
+
+	ep->is_stall = 0U;
+	ep->num = ep_num;
+
+	in->DIEPCTL &= ~USB_OTG_DIEPCTL_STALL;
+	if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
+		in->DIEPCTL |= USB_OTG_DIEPCTL_SD0PID_SEVNFRM;
+	}
+}
+void unstall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
+	ep_num &= 0xFU;  // TODO: needed?
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
+
+	ep->is_stall = 0U;
+	ep->num = ep_num;
+
+	out->DOEPCTL &= ~USB_OTG_DOEPCTL_STALL;
+	if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
+		out->DOEPCTL |= USB_OTG_DOEPCTL_SD0PID_SEVNFRM;
+	}
 }
 
 
+// requests
 static inline void get_device_status(USBD_HandleTypeDef* pdev) {
 	if (
 		pdev->dev_state == USBD_STATE_SUSPENDED ||
@@ -366,168 +526,6 @@ static inline void set_endpoin_feature(USBD_HandleTypeDef* pdev, uint8_t ep_num)
 	stall_EP(pdev->pData, 0x0U);
 }
 
-
-extern void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb);
-extern void flush_TX_FIFO(USB_OTG_GlobalTypeDef* usb, uint8_t ep);
-extern void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb);
-
-static inline void USB_write_packet(const USB_OTG_GlobalTypeDef *usb, uint8_t *src, uint8_t ep_num, uint16_t len) {
-	uint32_t*	FIFO = (uint32_t*)((uint32_t)usb + (0x1000UL * (ep_num + 1U)));
-	uint32_t	word_count;
-
-	word_count = ((uint32_t)len + 3U) / 4U;
-	for (uint32_t i = 0U; i < word_count; i++) {
-		*FIFO = __UNALIGNED_UINT32_READ(src);
-		src++; src++; src++; src++;
-	}
-}
-void IN_transfer(PCD_HandleTypeDef* hpcd, uint8_t ep_num, void* buffer, uint32_t size) {
-	ep_num &= 0xFU;
-	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
-	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
-	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
-	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
-
-	ep->xfer_buff =		buffer;
-	ep->xfer_len =		size;
-	ep->xfer_count =	0U;
-	ep->is_in =			1U;
-	ep->num =			ep_num;
-
-	if (!ep->xfer_len) {
-		in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_PKTCNT | USB_OTG_DIEPTSIZ_XFRSIZ);
-		in->DIEPTSIZ |= 0x1UL << USB_OTG_DIEPTSIZ_PKTCNT_Pos;
-	} else {
-		in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_XFRSIZ);
-		in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_PKTCNT);
-		if (!ep_num) {
-			if (ep->xfer_len > ep->maxpacket) { ep->xfer_len = ep->maxpacket; }
-			in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
-		} else {
-			in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (((ep->xfer_len + ep->maxpacket - 1U) / ep->maxpacket) << 19));
-		}
-		in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_XFRSIZ & ep->xfer_len);
-		if (ep->type == EP_TYPE_ISOC) {
-			in->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_MULCNT);
-			in->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_MULCNT & (1U << 29));
-		}
-	}
-
-	in->DIEPCTL |= (USB_OTG_DIEPCTL_CNAK | USB_OTG_DIEPCTL_EPENA);
-	if (ep->type != EP_TYPE_ISOC && ep->xfer_len) {
-		device->DIEPEMPMSK |= (0x01UL << ep->num);
-	}
-	else {
-		if ((device->DSTS & (1U << 8)) == 0U)	{ in->DIEPCTL |= USB_OTG_DIEPCTL_SODDFRM; }
-		else									{ in->DIEPCTL |= USB_OTG_DIEPCTL_SD0PID_SEVNFRM; }
-		USB_write_packet(usb, ep->xfer_buff, ep->num, (uint16_t)ep->xfer_len);
-	}
-
-}
-void OUT_transfer(PCD_HandleTypeDef* hpcd, uint8_t ep_num, void* buffer, uint32_t size) {
-	ep_num &= 0xFU;
-	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
-	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
-	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
-	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
-
-	ep->xfer_buff =		buffer;
-	ep->xfer_len =		size;
-	ep->xfer_count =	0U;
-	ep->is_in =			0U;
-	ep->num =			ep_num;
-
-	out->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_XFRSIZ | USB_OTG_DOEPTSIZ_PKTCNT);
-	if (!ep_num) {
-		if (ep->xfer_len) { ep->xfer_len = ep->maxpacket; }
-		ep->xfer_size = ep->maxpacket;
-		out->DOEPTSIZ |= (
-			(USB_OTG_DOEPTSIZ_XFRSIZ & ep->xfer_size)	|
-			(USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19))
-		);
-	} else {
-		if (!ep->xfer_len) {
-			out->DOEPTSIZ |= (
-				(USB_OTG_DOEPTSIZ_XFRSIZ & ep->maxpacket)	|
-				(USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19))
-			);
-		} else {
-			uint16_t pktcnt = (uint16_t)((ep->xfer_len + ep->maxpacket - 1U) / ep->maxpacket);
-			ep->xfer_size = ep->maxpacket * pktcnt;
-			out->DOEPTSIZ |= USB_OTG_DOEPTSIZ_PKTCNT & ((uint32_t)pktcnt << 19);
-			out->DOEPTSIZ |= USB_OTG_DOEPTSIZ_XFRSIZ & ep->xfer_size;
-		}
-	}
-	if (ep->type == EP_TYPE_ISOC) {
-		if ((device->DSTS & (1U << 8)) == 0U)	{ out->DOEPCTL |= USB_OTG_DOEPCTL_SODDFRM; }
-		else									{ out->DOEPCTL |= USB_OTG_DOEPCTL_SD0PID_SEVNFRM; }
-	}
-	out->DOEPCTL |= (USB_OTG_DOEPCTL_CNAK | USB_OTG_DOEPCTL_EPENA);
-}
-void stall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
-	ep_num &= 0xFU;  // TODO: needed?
-	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
-	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
-	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
-
-	ep->is_in =		1U;
-	ep->is_stall =	1U;
-	ep->num =		ep_num;
-
-	if (!(in->DIEPCTL & USB_OTG_DIEPCTL_EPENA) && ep_num) {
-		in->DIEPCTL &= ~(USB_OTG_DIEPCTL_EPDIS);
-	} in->DIEPCTL |= USB_OTG_DIEPCTL_STALL;
-
-	if (!ep_num) { start_OEP0(usb); }
-}
-void stall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
-	ep_num &= 0xFU;  // TODO: needed?
-	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
-	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
-	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
-
-	ep->is_in =		0U;
-	ep->is_stall =	1U;
-	ep->num =		ep_num;
-
-	if (!(out->DOEPCTL & USB_OTG_DOEPCTL_EPENA) && ep_num) {
-		out->DOEPCTL &= ~(USB_OTG_DOEPCTL_EPDIS);
-	} out->DOEPCTL |= USB_OTG_DOEPCTL_STALL;
-
-	if (!ep_num) { start_OEP0(usb); }
-}
-void unstall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
-	ep_num &= 0xFU;  // TODO: needed?
-	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
-	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
-	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
-
-	ep->is_stall = 0U;
-	ep->num = ep_num;
-
-	in->DIEPCTL &= ~USB_OTG_DIEPCTL_STALL;
-	if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
-		in->DIEPCTL |= USB_OTG_DIEPCTL_SD0PID_SEVNFRM;
-	}
-}
-void unstall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
-	ep_num &= 0xFU;  // TODO: needed?
-	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
-	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
-	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
-
-	ep->is_stall = 0U;
-	ep->num = ep_num;
-
-	out->DOEPCTL &= ~USB_OTG_DOEPCTL_STALL;
-	if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
-		out->DOEPCTL |= USB_OTG_DOEPCTL_SD0PID_SEVNFRM;
-	}
-}
-void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
-	stall_IEP(hpcd, ep_num); stall_OEP(hpcd, ep_num);
-}
-
 static inline void device_setup_request(USBD_HandleTypeDef* pdev) {
 	switch (pdev->header.type) {
 	case STANDARD_REQUEST:
@@ -583,7 +581,6 @@ static inline void endpoint_setup_request(USBD_HandleTypeDef* pdev) {
 	}
 	stall_EP(pdev->pData, 0x0U);
 }
-
 
 static inline void USB_OTG_IRQ(USBD_HandleTypeDef* pdev, USB_OTG_GlobalTypeDef* usb) {
 	// TODO: redo handle and make it possible to pass usb ptr
@@ -973,6 +970,7 @@ static inline void USB_wake_up_IRQ(PCD_HandleTypeDef* hpcd) {
 }
 
 
+// handlers
 static inline void IEP_common_handler(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
 	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
@@ -1102,6 +1100,6 @@ static inline void USB_wakeup_handler(PCD_HandleTypeDef* hpcd) {
 }
 
 
-// L0 ========================================= /
+// interrupts
 void OTG_FS_IRQHandler(void)		{ USB_common_handler(&hpcd_USB_OTG_FS); }
 void OTG_FS_WKUP_IRQHandler(void)	{ USB_wakeup_handler(&hpcd_USB_OTG_FS); }
