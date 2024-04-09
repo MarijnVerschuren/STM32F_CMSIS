@@ -7,822 +7,380 @@
 
 #define inline __attribute__((always_inline))
 
-/*!<
- * types
- * */
-typedef __PACKED_STRUCT {
-	uint32_t EPNUM		: 4;	// endpoint number
-	uint32_t BCNT		: 11;	// byte count
-	uint32_t DPID		: 2;	// data PID
-	uint32_t PKTSTS		: 4;	// packet status
-	uint32_t _			: 11;
-}	GRXSTS_t;
 
-// L1 ========================================= /
+// L1 ========================================= /  // TODO: typedef enum
 #define STS_GOUT_NAK                           1U
 #define STS_DATA_UPDT                          2U
 #define STS_XFER_COMP                          3U
 #define STS_SETUP_COMP                         4U
 #define STS_SETUP_UPDT                         6U
 
-// L2 ========================================= /
-#define EP_ADDR_MSK                            0xFU
-#define USB_OTG_CORE_ID_300A          0x4F54300AU
-#define USB_OTG_CORE_ID_310A          0x4F54310AU
-
 
 // defs
-USBD_StatusTypeDef USBD_CtlSendStatus(USBD_HandleTypeDef *pdev);
-HAL_StatusTypeDef USB_EP0_OutStart(const USB_OTG_GlobalTypeDef *USBx, uint8_t dma, const uint8_t *psetup);
-static inline void USB_write_packet(const USB_OTG_GlobalTypeDef *usb, uint8_t *src, uint8_t ep_num, uint16_t len);
 void IN_transfer(PCD_HandleTypeDef *hpcd, uint8_t ep_num, void* buffer, uint32_t size);
 void OUT_transfer(PCD_HandleTypeDef *hpcd, uint8_t ep_num, void* buffer, uint32_t size);
 void stall_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
 void stall_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
 void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
+void unstall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
+void unstall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
 
 
-// L7 ========================================= /
-HAL_StatusTypeDef USB_ActivateEndpoint(const USB_OTG_GlobalTypeDef *USBx, const USB_OTG_EPTypeDef *ep) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	uint32_t epnum = (uint32_t)ep->num;
-	if (ep->is_in == 1U) {
-		USBx_DEVICE->DAINTMSK |= USB_OTG_DAINTMSK_IEPM & (uint32_t)(1UL << (ep->num & EP_ADDR_MSK));
-		if ((USBx_INEP(epnum)->DIEPCTL & USB_OTG_DIEPCTL_USBAEP) == 0U) {
-			USBx_INEP(epnum)->DIEPCTL |= (ep->maxpacket & USB_OTG_DIEPCTL_MPSIZ) |
-										 ((uint32_t)ep->type << 18) | (epnum << 22) |
-										 USB_OTG_DIEPCTL_SD0PID_SEVNFRM |
-										 USB_OTG_DIEPCTL_USBAEP;
-		}
-	}
-	else {
-		USBx_DEVICE->DAINTMSK |= USB_OTG_DAINTMSK_OEPM & ((uint32_t)(1UL << (ep->num & EP_ADDR_MSK)) << 16);
-		if (((USBx_OUTEP(epnum)->DOEPCTL) & USB_OTG_DOEPCTL_USBAEP) == 0U) {
-			USBx_OUTEP(epnum)->DOEPCTL |= (ep->maxpacket & USB_OTG_DOEPCTL_MPSIZ) |
-										  ((uint32_t)ep->type << 18) |
-										  USB_OTG_DIEPCTL_SD0PID_SEVNFRM |
-										  USB_OTG_DOEPCTL_USBAEP;
-		}
-	}
-	return HAL_OK;
-}
-HAL_StatusTypeDef USB_DeactivateEndpoint(const USB_OTG_GlobalTypeDef *USBx, const USB_OTG_EPTypeDef *ep) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	uint32_t epnum = (uint32_t)ep->num;
-	/* Read DEPCTLn register */
-	if (ep->is_in == 1U) {
-		if ((USBx_INEP(epnum)->DIEPCTL & USB_OTG_DIEPCTL_EPENA) == USB_OTG_DIEPCTL_EPENA) {
-			USBx_INEP(epnum)->DIEPCTL |= USB_OTG_DIEPCTL_SNAK;
-			USBx_INEP(epnum)->DIEPCTL |= USB_OTG_DIEPCTL_EPDIS;
-		}
-		USBx_DEVICE->DEACHMSK &= ~(USB_OTG_DAINTMSK_IEPM & (uint32_t)(1UL << (ep->num & EP_ADDR_MSK)));
-		USBx_DEVICE->DAINTMSK &= ~(USB_OTG_DAINTMSK_IEPM & (uint32_t)(1UL << (ep->num & EP_ADDR_MSK)));
-		USBx_INEP(epnum)->DIEPCTL &= ~(USB_OTG_DIEPCTL_USBAEP |
-									   USB_OTG_DIEPCTL_MPSIZ |
-									   USB_OTG_DIEPCTL_TXFNUM |
-									   USB_OTG_DIEPCTL_SD0PID_SEVNFRM |
-									   USB_OTG_DIEPCTL_EPTYP);
-	}
-	else {
-		if ((USBx_OUTEP(epnum)->DOEPCTL & USB_OTG_DOEPCTL_EPENA) == USB_OTG_DOEPCTL_EPENA) {
-			USBx_OUTEP(epnum)->DOEPCTL |= USB_OTG_DOEPCTL_SNAK;
-			USBx_OUTEP(epnum)->DOEPCTL |= USB_OTG_DOEPCTL_EPDIS;
-		}
-		USBx_DEVICE->DEACHMSK &= ~(USB_OTG_DAINTMSK_OEPM & ((uint32_t)(1UL << (ep->num & EP_ADDR_MSK)) << 16));
-		USBx_DEVICE->DAINTMSK &= ~(USB_OTG_DAINTMSK_OEPM & ((uint32_t)(1UL << (ep->num & EP_ADDR_MSK)) << 16));
-		USBx_OUTEP(epnum)->DOEPCTL &= ~(USB_OTG_DOEPCTL_USBAEP |
-										USB_OTG_DOEPCTL_MPSIZ |
-										USB_OTG_DOEPCTL_SD0PID_SEVNFRM |
-										USB_OTG_DOEPCTL_EPTYP);
-	}
-	return HAL_OK;
-}
-HAL_StatusTypeDef USB_EPClearStall(const USB_OTG_GlobalTypeDef *USBx, const USB_OTG_EPTypeDef *ep) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	uint32_t epnum = (uint32_t)ep->num;
-	if (ep->is_in == 1U) {
-		USBx_INEP(epnum)->DIEPCTL &= ~USB_OTG_DIEPCTL_STALL;
-		if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
-			USBx_INEP(epnum)->DIEPCTL |= USB_OTG_DIEPCTL_SD0PID_SEVNFRM; /* DATA0 */
-		}
-	}
-	else {
-		USBx_OUTEP(epnum)->DOEPCTL &= ~USB_OTG_DOEPCTL_STALL;
-		if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
-			USBx_OUTEP(epnum)->DOEPCTL |= USB_OTG_DOEPCTL_SD0PID_SEVNFRM; /* DATA0 */
-		}
-	}
-	return HAL_OK;
-}
-HAL_StatusTypeDef USB_SetDevAddress(const USB_OTG_GlobalTypeDef *USBx, uint8_t address) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	USBx_DEVICE->DCFG &= ~(USB_OTG_DCFG_DAD);
-	USBx_DEVICE->DCFG |= ((uint32_t)address << 4) & USB_OTG_DCFG_DAD;
-	return HAL_OK;
-}
+void open_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type) {
+	ep_num &= 0xF;
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
+	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
 
+	ep->is_in = 1U;
+	ep->num = ep_num;
+	ep->maxpacket = ep_mps;
+	ep->type = ep_type;
+	ep->tx_fifo_num = ep->num;
 
-// L6 ========================================= /
-HAL_StatusTypeDef HAL_PCD_EP_Open(PCD_HandleTypeDef *hpcd, uint8_t ep_addr, uint16_t ep_mps, uint8_t ep_type) {
-	HAL_StatusTypeDef  ret = HAL_OK;
-	PCD_EPTypeDef *ep;
-	if ((ep_addr & 0x80U) == 0x80U) {
-		ep = &hpcd->IN_ep[ep_addr & EP_ADDR_MSK];
-		ep->is_in = 1U;
-	}
-	else {
-		ep = &hpcd->OUT_ep[ep_addr & EP_ADDR_MSK];
-		ep->is_in = 0U;
-	}
-	ep->num = ep_addr & EP_ADDR_MSK;
+	if (ep_type == EP_TYPE_BULK) { ep->data_pid_start = 0U; }
+	device->DAINTMSK |= (0x01UL << ep->num);
+	if (in->DIEPCTL & USB_OTG_DIEPCTL_USBAEP) { return; }
+	in->DIEPCTL |= (
+		(ep->maxpacket & USB_OTG_DIEPCTL_MPSIZ)		|
+		((uint32_t)ep->type << 18) | (ep_num << 22)	|
+		USB_OTG_DIEPCTL_SD0PID_SEVNFRM				|
+		USB_OTG_DIEPCTL_USBAEP
+	);
+}
+void open_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type) {
+	ep_num &= 0xF;
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
+	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
+
+	ep->is_in = 1U;
+	ep->num = ep_num;
 	ep->maxpacket = ep_mps;
 	ep->type = ep_type;
 
-	if (ep->is_in != 0U) {
-		/* Assign a Tx FIFO */
-		ep->tx_fifo_num = ep->num;
-	}
-	/* Set initial data PID. */
-	if (ep_type == EP_TYPE_BULK) {
-		ep->data_pid_start = 0U;
-	}
-	__HAL_LOCK(hpcd);
-	(void)USB_ActivateEndpoint(hpcd->Instance, ep);
-	__HAL_UNLOCK(hpcd);
-	return ret;
+	if (ep_type == EP_TYPE_BULK) { ep->data_pid_start = 0U; }
+	device->DAINTMSK |= (0x10UL << ep->num);
+	if (out->DOEPCTL & USB_OTG_DOEPCTL_USBAEP) { return; }
+	out->DOEPCTL |= (
+		(ep->maxpacket & USB_OTG_DOEPCTL_MPSIZ)	|
+		((uint32_t)ep->type << 18)				|
+		USB_OTG_DIEPCTL_SD0PID_SEVNFRM			|
+		USB_OTG_DOEPCTL_USBAEP
+	);
 }
-HAL_StatusTypeDef HAL_PCD_EP_Close(PCD_HandleTypeDef *hpcd, uint8_t ep_addr) {
-	PCD_EPTypeDef *ep;
-	if ((ep_addr & 0x80U) == 0x80U) {
-		ep = &hpcd->IN_ep[ep_addr & EP_ADDR_MSK];
-		ep->is_in = 1U;
-	}
-	else {
-		ep = &hpcd->OUT_ep[ep_addr & EP_ADDR_MSK];
-		ep->is_in = 0U;
-	}
-	ep->num = ep_addr & EP_ADDR_MSK;
-	__HAL_LOCK(hpcd);
-	(void)USB_DeactivateEndpoint(hpcd->Instance, ep);
-	__HAL_UNLOCK(hpcd);
-	return HAL_OK;
-}
-HAL_StatusTypeDef HAL_PCD_EP_ClrStall(PCD_HandleTypeDef *hpcd, uint8_t ep_addr){
-	PCD_EPTypeDef *ep;
-	if (((uint32_t)ep_addr & 0x0FU) > hpcd->Init.dev_endpoints) {
-		return HAL_ERROR;
-	}
-	if ((0x80U & ep_addr) == 0x80U) {
-		ep = &hpcd->IN_ep[ep_addr & EP_ADDR_MSK];
-		ep->is_in = 1U;
-	}
-	else {
-		ep = &hpcd->OUT_ep[ep_addr & EP_ADDR_MSK];
-		ep->is_in = 0U;
-	}
-	ep->is_stall = 0U;
-	ep->num = ep_addr & EP_ADDR_MSK;
-	__HAL_LOCK(hpcd);
-	(void)USB_EPClearStall(hpcd->Instance, ep);
-	__HAL_UNLOCK(hpcd);
-	return HAL_OK;
-}
-HAL_StatusTypeDef HAL_PCD_SetAddress(PCD_HandleTypeDef *hpcd, uint8_t address) {
-	__HAL_LOCK(hpcd);
-	hpcd->USB_Address = address;
-	(void)USB_SetDevAddress(hpcd->Instance, address);
-	__HAL_UNLOCK(hpcd);
+void close_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num) {
+	ep_num &= 0xF;
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
+	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
 
-	return HAL_OK;
+	ep->is_in = 1U;
+	ep->num = ep_num;
+
+	if (in->DIEPCTL & USB_OTG_DIEPCTL_EPENA) { in->DIEPCTL |= (USB_OTG_DIEPCTL_SNAK | USB_OTG_DIEPCTL_EPDIS); }
+	device->DEACHMSK &= ~(0x01UL << ep->num);
+	device->DAINTMSK &= ~(0x01UL << ep->num);
+	in->DIEPCTL &= ~(
+		USB_OTG_DIEPCTL_USBAEP |
+		USB_OTG_DIEPCTL_MPSIZ |
+		USB_OTG_DIEPCTL_TXFNUM |
+		USB_OTG_DIEPCTL_SD0PID_SEVNFRM |
+		USB_OTG_DIEPCTL_EPTYP
+	);
 }
-USBD_StatusTypeDef USBD_SetClassConfig(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
-	USBD_StatusTypeDef ret = USBD_OK;
-	if (pdev->pClass[0] != NULL) {
-		/* Set configuration and Start the Class */
-		ret = (USBD_StatusTypeDef)pdev->pClass[0]->Init(pdev, cfgidx);
-	}
-	return ret;
+void close_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num) {
+	ep_num &= 0xF;
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
+	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
+
+	ep->is_in = 0U;
+	ep->num = ep_num;
+	if (out->DOEPCTL & USB_OTG_DOEPCTL_EPENA) { out->DOEPCTL |= (USB_OTG_DOEPCTL_SNAK | USB_OTG_DOEPCTL_EPDIS); }
+	device->DEACHMSK &= ~(0x10UL << ep->num);
+	device->DAINTMSK &= ~(0x10UL << ep->num);
+	out->DOEPCTL &= ~(
+		USB_OTG_DOEPCTL_USBAEP |
+		USB_OTG_DOEPCTL_MPSIZ |
+		USB_OTG_DOEPCTL_SD0PID_SEVNFRM |
+		USB_OTG_DOEPCTL_EPTYP
+	);
 }
-USBD_StatusTypeDef USBD_ClrClassConfig(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
-	USBD_StatusTypeDef ret = USBD_OK;
-	/* Clear configuration  and De-initialize the Class process */
-	if (pdev->pClass[0]->DeInit(pdev, cfgidx) != 0U) {
-		ret = USBD_FAIL;
-	}
-	return ret;
+void IEP0_transfer(USBD_HandleTypeDef* handle, void* buffer, uint32_t size) {
+	handle->ep0_state = USBD_EP0_DATA_IN;
+	handle->ep_in[0].total_length = size;
+	handle->ep_in[0].rem_length = size;
+	IN_transfer(handle->pData, 0x00U, buffer, size);
+}
+void start_OEP0(USB_OTG_GlobalTypeDef* usb) {
+	USB_OTG_OUTEndpointTypeDef*	out = (void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE);
+	out->DOEPTSIZ = (
+		(USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19)) |
+		(3U * 8U) |
+		USB_OTG_DOEPTSIZ_STUPCNT
+	);
 }
 
 
-// L5 ========================================= /
-uint8_t USBD_LL_IsStallEP(USBD_HandleTypeDef *pdev, uint8_t ep_addr){
-	PCD_HandleTypeDef *hpcd = (PCD_HandleTypeDef*) pdev->pData;
-	if((ep_addr & 0x80) == 0x80) {
-		return hpcd->IN_ep[ep_addr & 0x7F].is_stall;
-	} else {
-		return hpcd->OUT_ep[ep_addr & 0x7F].is_stall;
+static inline void get_device_status(USBD_HandleTypeDef* pdev) {
+	if (
+		pdev->dev_state == USBD_STATE_SUSPENDED ||
+		pdev->header.length != 0x2U
+	) { return stall_EP(pdev->pData, 0x0U); }
+	pdev->dev_config_status = 0U;
+	if (pdev->dev_remote_wakeup) { pdev->dev_config_status |= USB_CONFIG_REMOTE_WAKEUP; }
+	IEP0_transfer(pdev, &pdev->dev_config_status, 2U);
+}
+static inline void clear_device_feature(USBD_HandleTypeDef* pdev) {
+	if (
+		pdev->dev_state == USBD_STATE_SUSPENDED
+	) { return stall_EP(pdev->pData, 0x0U); }
+	if (pdev->header.value == USB_FEATURE_REMOTE_WAKEUP) {
+		pdev->dev_remote_wakeup = 0U;
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		IN_transfer(pdev->pData, 0x00U, NULL, 0U);
 	}
 }
-USBD_StatusTypeDef USBD_CtlSendData(USBD_HandleTypeDef *pdev, uint8_t *pbuf, uint32_t len) {
-	pdev->ep0_state = USBD_EP0_DATA_IN;
-	pdev->ep_in[0].total_length = len;
-	pdev->ep_in[0].rem_length = len;
-	IN_transfer(pdev->pData, 0x00U, pbuf, len);
-	return USBD_OK;
-}
-static void USBD_GetDescriptor(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	uint16_t len = 0U;
-	uint8_t *pbuf = NULL;
-	uint8_t err = 0U;
-
-	switch (req->wValue >> 8) {
-		case USB_DESC_TYPE_DEVICE:
-			pbuf = pdev->pDesc->GetDeviceDescriptor(pdev->dev_speed, &len);
-			break;
-		case USB_DESC_TYPE_CONFIGURATION:
-			if (pdev->dev_speed == USBD_SPEED_HIGH) { {
-					pbuf = (uint8_t *)pdev->pClass[0]->GetHSConfigDescriptor(&len);
-				}
-				pbuf[1] = USB_DESC_TYPE_CONFIGURATION;
-			}
-			else { {
-					pbuf = (uint8_t *)pdev->pClass[0]->GetFSConfigDescriptor(&len);
-				}
-				pbuf[1] = USB_DESC_TYPE_CONFIGURATION;
-			}
-			break;
-		case USB_DESC_TYPE_STRING:
-			switch ((uint8_t)(req->wValue)) {
-				case USBD_IDX_LANGID_STR:
-					if (pdev->pDesc->GetLangIDStrDescriptor != NULL) {
-						pbuf = pdev->pDesc->GetLangIDStrDescriptor(pdev->dev_speed, &len);
-					}
-					else {
-						stall_EP(pdev->pData, 0x0U);
-						err++;
-					}
-					break;
-				case USBD_IDX_MFC_STR:
-					if (pdev->pDesc->GetManufacturerStrDescriptor != NULL) {
-						pbuf = pdev->pDesc->GetManufacturerStrDescriptor(pdev->dev_speed, &len);
-					}
-					else {
-						stall_EP(pdev->pData, 0x0U);
-						err++;
-					}
-					break;
-				case USBD_IDX_PRODUCT_STR:
-					if (pdev->pDesc->GetProductStrDescriptor != NULL) {
-						pbuf = pdev->pDesc->GetProductStrDescriptor(pdev->dev_speed, &len);
-					}
-					else {
-						stall_EP(pdev->pData, 0x0U);
-						err++;
-					}
-					break;
-				case USBD_IDX_SERIAL_STR:
-					if (pdev->pDesc->GetSerialStrDescriptor != NULL) {
-						pbuf = pdev->pDesc->GetSerialStrDescriptor(pdev->dev_speed, &len);
-					}
-					else {
-						stall_EP(pdev->pData, 0x0U);
-						err++;
-					}
-					break;
-				case USBD_IDX_CONFIG_STR:
-					if (pdev->pDesc->GetConfigurationStrDescriptor != NULL) {
-						pbuf = pdev->pDesc->GetConfigurationStrDescriptor(pdev->dev_speed, &len);
-					}
-					else {
-						stall_EP(pdev->pData, 0x0U);
-						err++;
-					}
-					break;
-				case USBD_IDX_INTERFACE_STR:
-					if (pdev->pDesc->GetInterfaceStrDescriptor != NULL) {
-						pbuf = pdev->pDesc->GetInterfaceStrDescriptor(pdev->dev_speed, &len);
-					}
-					else {
-						stall_EP(pdev->pData, 0x0U);
-						err++;
-					}
-					break;
-				default:
-					break;
-			}
-			break;
-
-		case USB_DESC_TYPE_DEVICE_QUALIFIER:
-			if (pdev->dev_speed == USBD_SPEED_HIGH) { {
-					pbuf = (uint8_t *)pdev->pClass[0]->GetDeviceQualifierDescriptor(&len);
-				}
-			}
-			else {
-				stall_EP(pdev->pData, 0x0U);
-				err++;
-			}
-			break;
-		case USB_DESC_TYPE_OTHER_SPEED_CONFIGURATION:
-			if (pdev->dev_speed == USBD_SPEED_HIGH) { {
-					pbuf = (uint8_t *)pdev->pClass[0]->GetOtherSpeedConfigDescriptor(&len);
-				}
-				pbuf[1] = USB_DESC_TYPE_OTHER_SPEED_CONFIGURATION;
-			}
-			else {
-				stall_EP(pdev->pData, 0x0U);
-				err++;
-			}
-			break;
-		default:
-			stall_EP(pdev->pData, 0x0U);
-			err++;
-			break;
+static inline void set_device_feature(USBD_HandleTypeDef* pdev) {
+	if (pdev->header.value == USB_FEATURE_REMOTE_WAKEUP) {
+		pdev->dev_remote_wakeup = 1U;
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		return IN_transfer(pdev->pData, 0x00U, NULL, 0U);
 	}
+	if (pdev->header.value == USB_FEATURE_TEST_MODE) {
+		pdev->dev_test_mode = (uint8_t)(pdev->header.index >> 8);
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		return IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+	}
+	stall_EP(pdev->pData, 0x0U);
+}
+static inline void set_device_address(USBD_HandleTypeDef* pdev) {
+	PCD_HandleTypeDef*		hpcd = 		pdev->pData;
+	USB_OTG_GlobalTypeDef* 	usb =		hpcd->Instance;
+	USB_OTG_DeviceTypeDef*	device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
+	uint8_t					device_address;
+	if (
+		!pdev->header.index &&
+		!pdev->header.length &&
+		(pdev->header.value < 128U) &&
+		pdev->dev_state != USBD_STATE_CONFIGURED
+	) {
+		device_address = (uint8_t)(pdev->header.value) & 0x7FU;
+		pdev->dev_address = hpcd->USB_Address = device_address;
+		device->DCFG &= ~(USB_OTG_DCFG_DAD);
+		device->DCFG |= device_address << USB_OTG_DCFG_DAD_Pos;
 
-	if (err != 0U) {
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+		if (device_address)	{ pdev->dev_state = USBD_STATE_ADDRESSED; }
+		else				{ pdev->dev_state = USBD_STATE_DEFAULT; }
 		return;
 	}
-
-	if (req->wLength != 0U) {
-		if (len != 0U) {
-			len = MIN(len, req->wLength);
-			(void)USBD_CtlSendData(pdev, pbuf, len);
-		}
-		else
-		{
-			stall_EP(pdev->pData, 0x0U);
-		}
-	}
-	else
-	{
-		(void)USBD_CtlSendStatus(pdev);
-	}
+	stall_EP(pdev->pData, 0x0U);
 }
-static void USBD_SetAddress(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	uint8_t  dev_addr;
-	if ((req->wIndex == 0U) && (req->wLength == 0U) && (req->wValue < 128U)) {
-		dev_addr = (uint8_t)(req->wValue) & 0x7FU;
-		if (pdev->dev_state == USBD_STATE_CONFIGURED) {
-			stall_EP(pdev->pData, 0x0U);
-		}
-		else {
-			pdev->dev_address = dev_addr;
-			(void)HAL_PCD_SetAddress(pdev->pData, dev_addr);
-			(void)USBD_CtlSendStatus(pdev);
+static inline void get_device_descriptor(USBD_HandleTypeDef* pdev) {
+	uint16_t	size = 0U;
+	uint8_t*	buffer = NULL;
 
-			if (dev_addr != 0U) {
-				pdev->dev_state = USBD_STATE_ADDRESSED;
-			}
-			else {
-				pdev->dev_state = USBD_STATE_DEFAULT;
-			}
-		}
-	}
-	else {
-		stall_EP(pdev->pData, 0x0U);
-	}
-}
-static USBD_StatusTypeDef USBD_SetConfig(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	USBD_StatusTypeDef ret = USBD_OK;
-	static uint8_t cfgidx;
-	cfgidx = (uint8_t)(req->wValue);
-	if (cfgidx > USBD_MAX_NUM_CONFIGURATION) {
-		stall_EP(pdev->pData, 0x0U);
-		return USBD_FAIL;
+	switch (pdev->header.value >> 8) {
+	case USB_DESC_TYPE_DEVICE:
+		buffer = pdev->pDesc->GetDeviceDescriptor(pdev->dev_speed, &size); break;
+	case USB_DESC_TYPE_CONFIGURATION:
+		buffer = (uint8_t *)pdev->pClass[0]->GetFSConfigDescriptor(&size);
+		buffer[1] = USB_DESC_TYPE_CONFIGURATION; break;
+	case USB_DESC_TYPE_STRING:
+		switch (pdev->header.value & 0xFFU) {
+		case USBD_IDX_LANGID_STR:
+			if (pdev->pDesc->GetLangIDStrDescriptor) {
+				buffer = pdev->pDesc->GetLangIDStrDescriptor(pdev->dev_speed, &size); break;
+			} return stall_EP(pdev->pData, 0x0U);
+		case USBD_IDX_MFC_STR:
+			if (pdev->pDesc->GetManufacturerStrDescriptor) {
+				buffer = pdev->pDesc->GetManufacturerStrDescriptor(pdev->dev_speed, &size); break;
+			} return stall_EP(pdev->pData, 0x0U);
+		case USBD_IDX_PRODUCT_STR:
+			if (pdev->pDesc->GetProductStrDescriptor) {
+				buffer = pdev->pDesc->GetProductStrDescriptor(pdev->dev_speed, &size); break;
+			} return stall_EP(pdev->pData, 0x0U);
+		case USBD_IDX_SERIAL_STR:
+			if (pdev->pDesc->GetSerialStrDescriptor) {
+				buffer = pdev->pDesc->GetSerialStrDescriptor(pdev->dev_speed, &size); break;
+			} return stall_EP(pdev->pData, 0x0U);
+		case USBD_IDX_CONFIG_STR:
+			if (pdev->pDesc->GetConfigurationStrDescriptor) {
+				buffer = pdev->pDesc->GetConfigurationStrDescriptor(pdev->dev_speed, &size); break;
+			} return stall_EP(pdev->pData, 0x0U);
+		case USBD_IDX_INTERFACE_STR:
+			if (pdev->pDesc->GetInterfaceStrDescriptor) {
+				buffer = pdev->pDesc->GetInterfaceStrDescriptor(pdev->dev_speed, &size); break;
+			} return stall_EP(pdev->pData, 0x0U);
+		default:									return stall_EP(pdev->pData, 0x0U);
+		} break;
+	case USB_DESC_TYPE_DEVICE_QUALIFIER:			return stall_EP(pdev->pData, 0x0U);
+	case USB_DESC_TYPE_OTHER_SPEED_CONFIGURATION:	return stall_EP(pdev->pData, 0x0U);
+	default:										return stall_EP(pdev->pData, 0x0U);
 	}
 
-	switch (pdev->dev_state) {
-		case USBD_STATE_ADDRESSED:
-			if (cfgidx != 0U) {
-				pdev->dev_config = cfgidx;
-				ret = USBD_SetClassConfig(pdev, cfgidx);
-				if (ret != USBD_OK) {
-					stall_EP(pdev->pData, 0x0U);
-					pdev->dev_state = USBD_STATE_ADDRESSED;
-				}
-				else {
-					(void)USBD_CtlSendStatus(pdev);
-					pdev->dev_state = USBD_STATE_CONFIGURED;
-				}
-			}
-			else {
-				(void)USBD_CtlSendStatus(pdev);
-			}
-			break;
-		case USBD_STATE_CONFIGURED:
-			if (cfgidx == 0U) {
-				pdev->dev_state = USBD_STATE_ADDRESSED;
-				pdev->dev_config = cfgidx;
-				(void)USBD_ClrClassConfig(pdev, cfgidx);
-				(void)USBD_CtlSendStatus(pdev);
-			}
-			else if (cfgidx != pdev->dev_config) {
-				/* Clear old configuration */
-				(void)USBD_ClrClassConfig(pdev, (uint8_t)pdev->dev_config);
-				/* set new configuration */
-				pdev->dev_config = cfgidx;
-				ret = USBD_SetClassConfig(pdev, cfgidx);
-				if (ret != USBD_OK){
-					stall_EP(pdev->pData, 0x0U);
-					(void)USBD_ClrClassConfig(pdev, (uint8_t)pdev->dev_config);
-					pdev->dev_state = USBD_STATE_ADDRESSED;
-				}
-				else {
-					(void)USBD_CtlSendStatus(pdev);
-				}
-			}
-			else {
-				(void)USBD_CtlSendStatus(pdev);
-			}
-			break;
-		default:
-			stall_EP(pdev->pData, 0x0U);
-			(void)USBD_ClrClassConfig(pdev, cfgidx);
-			ret = USBD_FAIL;
-			break;
+	if (pdev->header.length) {
+		if (size) {
+			size = MIN(size, pdev->header.length);
+			return IEP0_transfer(pdev, buffer, size);
+		} return stall_EP(pdev->pData, 0x0U);
 	}
-	return ret;
-}
-static void USBD_GetConfig(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	if (req->wLength != 1U) {
-		stall_EP(pdev->pData, 0x0U);
-	}
-	else {
-		switch (pdev->dev_state) {
-			case USBD_STATE_DEFAULT:
-			case USBD_STATE_ADDRESSED:
-				pdev->dev_default_config = 0U;
-				(void)USBD_CtlSendData(pdev, (uint8_t *)&pdev->dev_default_config, 1U);
-				break;
-			case USBD_STATE_CONFIGURED:
-				(void)USBD_CtlSendData(pdev, (uint8_t *)&pdev->dev_config, 1U);
-				break;
-			default:
-				stall_EP(pdev->pData, 0x0U);
-				break;
-		}
-	}
-}
-static void USBD_GetStatus(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	switch (pdev->dev_state) {
-		case USBD_STATE_DEFAULT:
-		case USBD_STATE_ADDRESSED:
-		case USBD_STATE_CONFIGURED:
-			if (req->wLength != 0x2U) {
-				stall_EP(pdev->pData, 0x0U);
-				break;
-			}
-
-#if (USBD_SELF_POWERED == 1U)
-			pdev->dev_config_status = USB_CONFIG_SELF_POWERED;
-#else
-			pdev->dev_config_status = 0U;
-#endif /* USBD_SELF_POWERED */
-
-			if (pdev->dev_remote_wakeup != 0U) {
-				pdev->dev_config_status |= USB_CONFIG_REMOTE_WAKEUP;
-			}
-			(void)USBD_CtlSendData(pdev, (uint8_t *)&pdev->dev_config_status, 2U);
-			break;
-
-		default:
-			stall_EP(pdev->pData, 0x0U);
-			break;
-	}
-}
-static void USBD_SetFeature(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	if (req->wValue == USB_FEATURE_REMOTE_WAKEUP) {
-		pdev->dev_remote_wakeup = 1U;
-		(void)USBD_CtlSendStatus(pdev);
-	}
-	else if (req->wValue == USB_FEATURE_TEST_MODE) {
-		pdev->dev_test_mode = (uint8_t)(req->wIndex >> 8);
-		(void)USBD_CtlSendStatus(pdev);
-	}
-	else {
-		stall_EP(pdev->pData, 0x0U);
-	}
-}
-static void USBD_ClrFeature(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	switch (pdev->dev_state) {
-		case USBD_STATE_DEFAULT:
-		case USBD_STATE_ADDRESSED:
-		case USBD_STATE_CONFIGURED:
-			if (req->wValue == USB_FEATURE_REMOTE_WAKEUP) {
-				pdev->dev_remote_wakeup = 0U;
-				(void)USBD_CtlSendStatus(pdev);
-			}
-			break;
-		default:
-			stall_EP(pdev->pData, 0x0U);
-			break;
-	}
-}
-
-
-// L4 ========================================= /
-uint8_t USBD_CoreFindIF(USBD_HandleTypeDef *pdev, uint8_t index) {
-	UNUSED(pdev);
-	UNUSED(index);
-	return 0x00U;
-}
-USBD_StatusTypeDef USBD_CtlSendStatus(USBD_HandleTypeDef *pdev) {
 	pdev->ep0_state = USBD_EP0_STATUS_IN;
 	IN_transfer(pdev->pData, 0x00U, NULL, 0U);
-	return USBD_OK;
 }
-void USBD_ParseSetupRequest(USBD_SetupReqTypedef *req, uint8_t *pdata) {
-	uint8_t *pbuff = pdata;
-	req->bmRequest = *(uint8_t *)(pbuff);
-	pbuff++;
-	req->bRequest = *(uint8_t *)(pbuff);
-	pbuff++;
-	req->wValue = SWAPBYTE(pbuff);
-	pbuff++;
-	pbuff++;
-	req->wIndex = SWAPBYTE(pbuff);
-	pbuff++;
-	pbuff++;
-	req->wLength = SWAPBYTE(pbuff);
-}
-USBD_StatusTypeDef USBD_StdDevReq(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	USBD_StatusTypeDef ret = USBD_OK;
-	switch (req->bmRequest & USB_REQ_TYPE_MASK) {
-		case USB_REQ_TYPE_CLASS:
-		case USB_REQ_TYPE_VENDOR:
-			ret = (USBD_StatusTypeDef)pdev->pClass[pdev->classId]->Setup(pdev, req);
-			break;
-		case USB_REQ_TYPE_STANDARD:
-			switch (req->bRequest) {
-				case USB_REQ_GET_DESCRIPTOR:
-					USBD_GetDescriptor(pdev, req);
-					break;
-				case USB_REQ_SET_ADDRESS:
-					USBD_SetAddress(pdev, req);
-					break;
-				case USB_REQ_SET_CONFIGURATION:
-					ret = USBD_SetConfig(pdev, req);
-					break;
-				case USB_REQ_GET_CONFIGURATION:
-					USBD_GetConfig(pdev, req);
-					break;
-				case USB_REQ_GET_STATUS:
-					USBD_GetStatus(pdev, req);
-					break;
-				case USB_REQ_SET_FEATURE:
-					USBD_SetFeature(pdev, req);
-					break;
-				case USB_REQ_CLEAR_FEATURE:
-					USBD_ClrFeature(pdev, req);
-					break;
-				default:
-					stall_EP(pdev->pData, 0x0U);
-					break;
-			}
-			break;
-		default:
-			stall_EP(pdev->pData, 0x0U);
-			break;
-	}
-	return ret;
-}
-USBD_StatusTypeDef USBD_StdItfReq(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	USBD_StatusTypeDef ret = USBD_OK;
-	uint8_t idx;
-	switch (req->bmRequest & USB_REQ_TYPE_MASK) {
-		case USB_REQ_TYPE_CLASS:
-		case USB_REQ_TYPE_VENDOR:
-		case USB_REQ_TYPE_STANDARD:
-			switch (pdev->dev_state) {
-				case USBD_STATE_DEFAULT:
-				case USBD_STATE_ADDRESSED:
-				case USBD_STATE_CONFIGURED:
-					if (LOBYTE(req->wIndex) <= USBD_MAX_NUM_INTERFACES) {
-						/* Get the class index relative to this interface */
-						idx = USBD_CoreFindIF(pdev, LOBYTE(req->wIndex));
-						if (((uint8_t)idx != 0xFFU) && (idx < USBD_MAX_SUPPORTED_CLASS)) {
-							/* Call the class data out function to manage the request */
-							if (pdev->pClass[idx]->Setup != NULL) {
-								pdev->classId = idx;
-								ret = (USBD_StatusTypeDef)(pdev->pClass[idx]->Setup(pdev, req));
-							}
-							else {
-								/* should never reach this condition */
-								ret = USBD_FAIL;
-							}
-						}
-						else {
-							/* No relative interface found */
-							ret = USBD_FAIL;
-						}
-						if ((req->wLength == 0U) && (ret == USBD_OK)) {
-							(void)USBD_CtlSendStatus(pdev);
-						}
-					}
-					else {
-						stall_EP(pdev->pData, 0x0U);
-					}
-					break;
-				default:
-					stall_EP(pdev->pData, 0x0U);
-					break;
-			}
-			break;
-		default:
-			stall_EP(pdev->pData, 0x0U);
-			break;
-	}
-	return ret;
-}
-USBD_StatusTypeDef USBD_StdEPReq(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req) {
-	USBD_EndpointTypeDef *pep;
-	uint8_t ep_addr;
-	uint8_t idx;
-	USBD_StatusTypeDef ret = USBD_OK;
-	ep_addr = LOBYTE(req->wIndex);
-	switch (req->bmRequest & USB_REQ_TYPE_MASK) {
-		case USB_REQ_TYPE_CLASS:
-		case USB_REQ_TYPE_VENDOR:
-			/* Get the class index relative to this endpoint */
-			idx = 0;
-			if (((uint8_t)idx != 0xFFU) && (idx < USBD_MAX_SUPPORTED_CLASS)){
-				pdev->classId = idx;
-				/* Call the class data out function to manage the request */
-				if (pdev->pClass[idx]->Setup != NULL) {
-					ret = (USBD_StatusTypeDef)pdev->pClass[idx]->Setup(pdev, req);
-				}
-			}
-			break;
-		case USB_REQ_TYPE_STANDARD:
-			switch (req->bRequest) {
-				case USB_REQ_SET_FEATURE:
-					switch (pdev->dev_state) {
-						case USBD_STATE_ADDRESSED:
-							if ((ep_addr != 0x00U) && (ep_addr != 0x80U)) {
-								if (ep_addr & 0x80) { stall_IEP(pdev->pData, ep_addr & 0xFU); }
-								else				{ stall_OEP(pdev->pData, ep_addr & 0xFU); }
-								stall_IEP(pdev->pData, 0x0U);
-							}
-							else {
-								stall_EP(pdev->pData, 0x0U);
-							}
-							break;
-						case USBD_STATE_CONFIGURED:
-							if (req->wValue == USB_FEATURE_EP_HALT) {
-								if ((ep_addr != 0x00U) && (ep_addr != 0x80U) && (req->wLength == 0x00U)) {
-									if (ep_addr & 0x80) { stall_IEP(pdev->pData, ep_addr & 0xFU); }
-									else				{ stall_OEP(pdev->pData, ep_addr & 0xFU); }
-								}
-							}
-							(void)USBD_CtlSendStatus(pdev);
-							break;
-						default:
-							stall_EP(pdev->pData, 0x0U);
-							break;
-					}
-					break;
-				case USB_REQ_CLEAR_FEATURE:
-					switch (pdev->dev_state) {
-						case USBD_STATE_ADDRESSED:
-							if ((ep_addr != 0x00U) && (ep_addr != 0x80U)) {
-								if (ep_addr & 0x80) { stall_IEP(pdev->pData, ep_addr & 0xFU); }
-								else				{ stall_OEP(pdev->pData, ep_addr & 0xFU); }
-								stall_IEP(pdev->pData, 0x0U);
-							}
-							else {
-								stall_EP(pdev->pData, 0x0U);
-							}
-							break;
-						case USBD_STATE_CONFIGURED:
-							if (req->wValue == USB_FEATURE_EP_HALT) {
-								if ((ep_addr & 0x7FU) != 0x00U) {
-									(void)HAL_PCD_EP_ClrStall(pdev->pData, ep_addr);
-								}
-								(void)USBD_CtlSendStatus(pdev);
-								/* Get the class index relative to this interface */
-								idx = 0;
-								if (((uint8_t)idx != 0xFFU) && (idx < USBD_MAX_SUPPORTED_CLASS)) {
-									pdev->classId = idx;
-									/* Call the class data out function to manage the request */
-									if (pdev->pClass[idx]->Setup != NULL) {
-										ret = (USBD_StatusTypeDef)(pdev->pClass[idx]->Setup(pdev, req));
-									}
-								}
-							}
-							break;
-						default:
-							stall_EP(pdev->pData, 0x0U);
-							break;
-					}
-					break;
-				case USB_REQ_GET_STATUS:
-					switch (pdev->dev_state) {
-						case USBD_STATE_ADDRESSED:
-							if ((ep_addr != 0x00U) && (ep_addr != 0x80U)) {
-								stall_EP(pdev->pData, 0x0U);
-								break;
-							}
-							pep = ((ep_addr & 0x80U) == 0x80U) ? &pdev->ep_in[ep_addr & 0x7FU] : &pdev->ep_out[ep_addr & 0x7FU];
-							pep->status = 0x0000U;
-							(void)USBD_CtlSendData(pdev, (uint8_t *)&pep->status, 2U);
-							break;
-						case USBD_STATE_CONFIGURED:
-							if ((ep_addr & 0x80U) == 0x80U) {
-								if (pdev->ep_in[ep_addr & 0xFU].is_used == 0U) {
-									stall_EP(pdev->pData, 0x0U);
-									break;
-								}
-							}
-							else {
-								if (pdev->ep_out[ep_addr & 0xFU].is_used == 0U) {
-									stall_EP(pdev->pData, 0x0U);
-									break;
-								}
-							}
-							pep = ((ep_addr & 0x80U) == 0x80U) ? &pdev->ep_in[ep_addr & 0x7FU] : &pdev->ep_out[ep_addr & 0x7FU];
-							if ((ep_addr == 0x00U) || (ep_addr == 0x80U)) {
-								pep->status = 0x0000U;
-							}
-							else if (USBD_LL_IsStallEP(pdev, ep_addr) != 0U) {
-								pep->status = 0x0001U;
-							}
-							else {
-								pep->status = 0x0000U;
-							}
-							(void)USBD_CtlSendData(pdev, (uint8_t *)&pep->status, 2U);
-							break;
-						default:
-							stall_EP(pdev->pData, 0x0U);
-							break;
-					}
-					break;
-				default:
-					stall_EP(pdev->pData, 0x0U);
-					break;
-			}
-			break;
-		default:
-			stall_EP(pdev->pData, 0x0U);
-			break;
-	}
-	return ret;
-}
+static inline void get_device_configuration(USBD_HandleTypeDef* pdev) {
+	if (
+		pdev->header.length != 0xFFFFU ||
+		pdev->dev_state == USBD_STATE_SUSPENDED
+	) { return stall_EP(pdev->pData, 0x0U); }
 
+	switch (pdev->dev_state) {
+	case USBD_STATE_DEFAULT:
+	case USBD_STATE_ADDRESSED:
+		pdev->dev_default_config = 0U;
+		return IEP0_transfer(pdev, &pdev->dev_default_config, 1U);
+	case USBD_STATE_CONFIGURED:
+		return IEP0_transfer(pdev, &pdev->dev_config, 1U);
+	}
+}
+static inline void set_device_configuration(USBD_HandleTypeDef* pdev) {
+	uint8_t config = pdev->header.value & 0xFFU;
+	if (config > USBD_MAX_NUM_CONFIGURATION) { return stall_EP(pdev->pData, 0x0U); }
 
-// L3 ========================================= /
-HAL_StatusTypeDef USB_EP0_OutStart(const USB_OTG_GlobalTypeDef *USBx, uint8_t dma, const uint8_t *psetup) {
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	uint32_t gSNPSiD = *(__IO const uint32_t *)(&USBx->CID + 0x1U);
-
-	if (gSNPSiD > USB_OTG_CORE_ID_300A) {
-		if ((USBx_OUTEP(0U)->DOEPCTL & USB_OTG_DOEPCTL_EPENA) == USB_OTG_DOEPCTL_EPENA) {
-			return HAL_OK;
+	switch (pdev->dev_state) {
+	case USBD_STATE_ADDRESSED:
+		if (!config) {
+			pdev->ep0_state = USBD_EP0_STATUS_IN;
+			return IN_transfer(pdev->pData, 0x00U, NULL, 0U);
 		}
+		pdev->dev_config = config;
+		if (pdev->pClass[0]->Init(pdev, config) != USBD_OK) {
+			pdev->dev_state = USBD_STATE_ADDRESSED;
+			break;
+		}
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		pdev->dev_state = USBD_STATE_CONFIGURED;
+		return IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+	case USBD_STATE_CONFIGURED:
+		if (!config) {
+			pdev->dev_state = USBD_STATE_ADDRESSED;
+			pdev->dev_config = config;
+			pdev->pClass[0]->DeInit(pdev, config);
+			pdev->ep0_state = USBD_EP0_STATUS_IN;
+			return IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+		} else if (config != pdev->dev_config) {
+			pdev->pClass[0]->DeInit(pdev, (uint8_t)pdev->dev_config);
+			pdev->dev_config = config;
+			if (pdev->pClass[0]->Init(pdev, config) != USBD_OK){
+				pdev->pClass[0]->DeInit(pdev, (uint8_t)pdev->dev_config);
+				pdev->dev_state = USBD_STATE_ADDRESSED;
+				break;
+			}
+		}
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		return IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+	default: pdev->pClass[0]->DeInit(pdev, config); break;
 	}
-
-	USBx_OUTEP(0U)->DOEPTSIZ = 0U;
-	USBx_OUTEP(0U)->DOEPTSIZ |= (USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19));
-	USBx_OUTEP(0U)->DOEPTSIZ |= (3U * 8U);
-	USBx_OUTEP(0U)->DOEPTSIZ |=  USB_OTG_DOEPTSIZ_STUPCNT;
-
-	if (dma == 1U) {
-		USBx_OUTEP(0U)->DOEPDMA = (uint32_t)psetup;
-		/* EP enable */
-		USBx_OUTEP(0U)->DOEPCTL |= USB_OTG_DOEPCTL_EPENA | USB_OTG_DOEPCTL_USBAEP;
-	}
-
-	return HAL_OK;
+	stall_EP(pdev->pData, 0x0U);
 }
-USBD_StatusTypeDef USBD_LL_SetupStage(USBD_HandleTypeDef *pdev, uint8_t *psetup) {
-	USBD_StatusTypeDef ret = USBD_OK;
-	USBD_ParseSetupRequest(&pdev->request, psetup);
-	pdev->ep0_state = USBD_EP0_SETUP;
-	pdev->ep0_data_len = pdev->request.wLength;
-	switch (pdev->request.bmRequest & 0x1FU) {
-		case USB_REQ_RECIPIENT_DEVICE:
-			ret = USBD_StdDevReq(pdev, &pdev->request);
-			break;
-		case USB_REQ_RECIPIENT_INTERFACE:
-			ret = USBD_StdItfReq(pdev, &pdev->request);
-			break;
-		case USB_REQ_RECIPIENT_ENDPOINT:
-			ret = USBD_StdEPReq(pdev, &pdev->request);
-			break;
-		default:
-			if (pdev->request.bmRequest & 0x80U)	{ stall_IEP(pdev->pData, 0x0U); }
-			else									{ stall_OEP(pdev->pData, 0x0U); }
-			break;
-	}
+static inline void get_dendpoint_status(USBD_HandleTypeDef* pdev, uint8_t ep_num) {
+	PCD_HandleTypeDef*		hpcd = (PCD_HandleTypeDef*) pdev->pData;
+	USBD_EndpointTypeDef*	pep;
 
-	return ret;
+	switch (pdev->dev_state) {
+	case USBD_STATE_ADDRESSED:
+		if ((ep_num != 0x00U) && (ep_num != 0x80U)) { break; }
+		pep = ((ep_num & 0x80U) == 0x80U) ? &pdev->ep_in[ep_num & 0x7FU] : &pdev->ep_out[ep_num & 0x7FU];
+		pep->status = 0x0000U;
+		return IEP0_transfer(pdev, &pep->status, 2U);
+	case USBD_STATE_CONFIGURED:
+		if (
+			(ep_num & 0x80U && !pdev->ep_in[ep_num & 0xFU].is_used) ||
+			!pdev->ep_out[ep_num & 0xFU].is_used
+		) { break; }
+		pep = (ep_num & 0x80U) ? &pdev->ep_in[ep_num & 0x7FU] : &pdev->ep_out[ep_num & 0x7FU];
+		pep->status = 0x0000U;
+		if ((ep_num != 0x00U) && (ep_num != 0x80U) &&
+			((ep_num & 0x80U && hpcd->IN_ep[ep_num & 0x7FU].is_stall) ||
+			hpcd->OUT_ep[ep_num & 0x7FU].is_stall)
+		) { pep->status = 0x0001U; }
+		return IEP0_transfer(pdev, &pep->status, 2U);
+	default: break;
+	}
+	stall_EP(pdev->pData, 0x0U);
+}
+static inline void clear_endpoint_feature(USBD_HandleTypeDef* pdev, uint8_t ep_num) {
+	switch (pdev->dev_state) {
+	case USBD_STATE_ADDRESSED:
+		if ((ep_num != 0x00U) && (ep_num != 0x80U)) {
+			if (ep_num & 0x80)	{ stall_IEP(pdev->pData, ep_num & 0xFU); }
+			else				{ stall_OEP(pdev->pData, ep_num & 0xFU); }
+		} return stall_EP(pdev->pData, 0x0U);
+	case USBD_STATE_CONFIGURED:
+		if (pdev->header.value == USB_FEATURE_EP_HALT) {
+			if (ep_num == 0x80U)		{ unstall_IEP(pdev->pData, 0U); }
+			else if (ep_num == 0x00U)	{ unstall_OEP(pdev->pData, 0U); }
+			pdev->ep0_state = USBD_EP0_STATUS_IN;
+			IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+			pdev->classId = 0;
+			if (pdev->pClass[0]->Setup != NULL) {
+				(void)(pdev->pClass[0]->Setup(pdev, (void*)&pdev->header));
+			}
+		}
+		return;
+	default: break;
+	}
+	stall_EP(pdev->pData, 0x0U);
+}
+static inline void set_endpoin_feature(USBD_HandleTypeDef* pdev, uint8_t ep_num) {
+	switch (pdev->dev_state) {
+	case USBD_STATE_ADDRESSED:
+		if ((ep_num != 0x00U) && (ep_num != 0x80U)) {
+			if (ep_num & 0x80)	{ stall_IEP(pdev->pData, ep_num & 0xFU); }
+			else				{ stall_OEP(pdev->pData, ep_num & 0xFU); }
+			stall_IEP(pdev->pData, 0x0U);
+		}
+		else {
+			stall_EP(pdev->pData, 0x0U);
+		}
+		return;
+	case USBD_STATE_CONFIGURED:
+		if (pdev->header.value == USB_FEATURE_EP_HALT) {
+			if ((ep_num != 0x00U) && (ep_num != 0x80U) && !pdev->header.length) {
+				if (ep_num & 0x80)	{ stall_IEP(pdev->pData, ep_num & 0xFU); }
+				else				{ stall_OEP(pdev->pData, ep_num & 0xFU); }
+			}
+		}
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+		return;
+	default: break;
+	}
+	stall_EP(pdev->pData, 0x0U);
 }
 
 
-
-// L1.3 ======================================== /
 extern void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb);
 extern void flush_TX_FIFO(USB_OTG_GlobalTypeDef* usb, uint8_t ep);
 extern void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb);
 
+static inline void USB_write_packet(const USB_OTG_GlobalTypeDef *usb, uint8_t *src, uint8_t ep_num, uint16_t len) {
+	uint32_t*	FIFO = (uint32_t*)((uint32_t)usb + (0x1000UL * (ep_num + 1U)));
+	uint32_t	word_count;
+
+	word_count = ((uint32_t)len + 3U) / 4U;
+	for (uint32_t i = 0U; i < word_count; i++) {
+		*FIFO = __UNALIGNED_UINT32_READ(src);
+		src++; src++; src++; src++;
+	}
+}
 void IN_transfer(PCD_HandleTypeDef* hpcd, uint8_t ep_num, void* buffer, uint32_t size) {
 	ep_num &= 0xFU;
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
@@ -857,7 +415,7 @@ void IN_transfer(PCD_HandleTypeDef* hpcd, uint8_t ep_num, void* buffer, uint32_t
 
 	in->DIEPCTL |= (USB_OTG_DIEPCTL_CNAK | USB_OTG_DIEPCTL_EPENA);
 	if (ep->type != EP_TYPE_ISOC && ep->xfer_len) {
-		device->DIEPEMPMSK |= 1UL << (ep->num & EP_ADDR_MSK);
+		device->DIEPEMPMSK |= (0x01UL << ep->num);
 	}
 	else {
 		if ((device->DSTS & (1U << 8)) == 0U)	{ in->DIEPCTL |= USB_OTG_DIEPCTL_SODDFRM; }
@@ -906,7 +464,6 @@ void OUT_transfer(PCD_HandleTypeDef* hpcd, uint8_t ep_num, void* buffer, uint32_
 	}
 	out->DOEPCTL |= (USB_OTG_DOEPCTL_CNAK | USB_OTG_DOEPCTL_EPENA);
 }
-// TODO< after open_EP
 void stall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	ep_num &= 0xFU;  // TODO: needed?
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
@@ -921,9 +478,7 @@ void stall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 		in->DIEPCTL &= ~(USB_OTG_DIEPCTL_EPDIS);
 	} in->DIEPCTL |= USB_OTG_DIEPCTL_STALL;
 
-	if (!ep_num) {
-		(void)USB_EP0_OutStart(hpcd->Instance, (uint8_t)hpcd->Init.dma_enable, (uint8_t *)hpcd->Setup);
-	}
+	if (!ep_num) { start_OEP0(usb); }
 }
 void stall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	ep_num &= 0xFU;  // TODO: needed?
@@ -939,27 +494,97 @@ void stall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 		out->DOEPCTL &= ~(USB_OTG_DOEPCTL_EPDIS);
 	} out->DOEPCTL |= USB_OTG_DOEPCTL_STALL;
 
-	if (!ep_num) {
-		(void)USB_EP0_OutStart(hpcd->Instance, (uint8_t)hpcd->Init.dma_enable, (uint8_t *)hpcd->Setup);
+	if (!ep_num) { start_OEP0(usb); }
+}
+void unstall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
+	ep_num &= 0xFU;  // TODO: needed?
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->IN_ep[ep_num];
+
+	ep->is_stall = 0U;
+	ep->num = ep_num;
+
+	in->DIEPCTL &= ~USB_OTG_DIEPCTL_STALL;
+	if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
+		in->DIEPCTL |= USB_OTG_DIEPCTL_SD0PID_SEVNFRM;
 	}
 }
-// TODO /
+void unstall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
+	ep_num &= 0xFU;  // TODO: needed?
+	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
+	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	PCD_EPTypeDef*				ep =		&hpcd->OUT_ep[ep_num];
+
+	ep->is_stall = 0U;
+	ep->num = ep_num;
+
+	out->DOEPCTL &= ~USB_OTG_DOEPCTL_STALL;
+	if ((ep->type == EP_TYPE_INTR) || (ep->type == EP_TYPE_BULK)) {
+		out->DOEPCTL |= USB_OTG_DOEPCTL_SD0PID_SEVNFRM;
+	}
+}
 void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	stall_IEP(hpcd, ep_num); stall_OEP(hpcd, ep_num);
 }
-static inline void USB_write_packet(const USB_OTG_GlobalTypeDef *usb, uint8_t *src, uint8_t ep_num, uint16_t len) {
-	uint32_t*	FIFO = (uint32_t*)((uint32_t)USB_OTG_FS + (0x1000UL * (ep_num + 1U)));
-	uint32_t	word_count;
 
-	word_count = ((uint32_t)len + 3U) / 4U;
-	for (uint32_t i = 0U; i < word_count; i++) {
-		*FIFO = __UNALIGNED_UINT32_READ(src);
-		src++; src++; src++; src++;
+static inline void device_setup_request(USBD_HandleTypeDef* pdev) {
+	switch (pdev->header.type) {
+	case STANDARD_REQUEST:
+		switch (pdev->header.command) {
+		case GET_STATUS:		return get_device_status(pdev);
+		case CLEAR_FEATURE:		return clear_device_feature(pdev);
+		case SET_FEATURE:		return set_device_feature(pdev);
+		case SET_ADDRESS:		return set_device_address(pdev);
+		case GET_DESCRIPTOR:	return get_device_descriptor(pdev);
+		case SET_DESCRIPTOR:	break;
+		case GET_CONFIGURATION:	return get_device_configuration(pdev);
+		case SET_CONFIGURATION:	return set_device_configuration(pdev);
+		default:				break;
+		} break;
+	default: break;
 	}
+	stall_EP(pdev->pData, 0x0U);
+}
+static inline void interface_setup_request(USBD_HandleTypeDef* pdev) {
+	if (
+		pdev->dev_state == USBD_STATE_SUSPENDED ||
+		!pdev->dev_state || pdev->header.type > VENDOR_REQUEST ||
+		(pdev->header.index & 0xFFU) > USBD_MAX_NUM_INTERFACES
+	) { return stall_EP(pdev->pData, 0x0U); }
+	if (pdev->pClass[0]->Setup != NULL) {
+		pdev->classId = 0;
+		(void)(pdev->pClass[0]->Setup(pdev, (void*)&pdev->header));
+	}
+	if (!pdev->header.length) {
+		pdev->ep0_state = USBD_EP0_STATUS_IN;
+		IN_transfer(pdev->pData, 0x00U, NULL, 0U);
+	}
+}
+static inline void endpoint_setup_request(USBD_HandleTypeDef* pdev) {
+	uint8_t ep_num = pdev->header.index & 0xFFU;
+
+	switch (pdev->header.type) {
+	case USB_REQ_TYPE_STANDARD:
+		switch (pdev->header.command) {
+		case USB_REQ_SET_FEATURE:	return set_endpoin_feature(pdev, ep_num);
+		case USB_REQ_CLEAR_FEATURE:	return clear_endpoint_feature(pdev, ep_num);
+		case USB_REQ_GET_STATUS:	return get_dendpoint_status(pdev, ep_num);
+		default: break;
+		} break;
+	case USB_REQ_TYPE_CLASS:
+	case USB_REQ_TYPE_VENDOR:
+		pdev->classId = 0;
+		if (pdev->pClass[0]->Setup) {
+			(void)pdev->pClass[0]->Setup(pdev, (void*)&pdev->header);
+		}
+		return;
+	default: break;
+	}
+	stall_EP(pdev->pData, 0x0U);
 }
 
 
-// L1.1 - L1.2 ================================= /
 static inline void USB_OTG_IRQ(USBD_HandleTypeDef* pdev, USB_OTG_GlobalTypeDef* usb) {
 	// TODO: redo handle and make it possible to pass usb ptr
 	uint32_t tmp = usb->GOTGINT;
@@ -1094,7 +719,7 @@ static inline void USB_reset_IRQ(PCD_HandleTypeDef* hpcd) {
 	}
 
 	device->DCFG &= ~USB_OTG_DCFG_DAD;
-	(void)USB_EP0_OutStart(hpcd->Instance, (uint8_t)hpcd->Init.dma_enable, (uint8_t *)hpcd->Setup);
+	start_OEP0(usb);
 	usb->GINTSTS |= USB_OTG_GINTSTS_USBRST;
 }
 static inline void USB_enumeration_done_IRQ(PCD_HandleTypeDef* hpcd) {
@@ -1131,13 +756,12 @@ static inline void USB_enumeration_done_IRQ(PCD_HandleTypeDef* hpcd) {
 		}
 	}
 
-	// TODO!!!!
-	(void)HAL_PCD_EP_Open(pdev->pData, 0x00U, USB_MAX_EP0_SIZE, USBD_EP_TYPE_CTRL);
-	pdev->ep_out[0x00U & 0xFU].is_used = 1U;
+	open_OEP(pdev->pData, 0x00U, USB_MAX_EP0_SIZE, USBD_EP_TYPE_CTRL);
+	pdev->ep_out[0].is_used = 1U;
 	pdev->ep_out[0].maxpacket = USB_MAX_EP0_SIZE;
 
-	(void)HAL_PCD_EP_Open(pdev->pData, 0x80U, USB_MAX_EP0_SIZE, USBD_EP_TYPE_CTRL);
-	pdev->ep_in[0x80U & 0xFU].is_used = 1U;
+	open_IEP(pdev->pData, 0x00U, USB_MAX_EP0_SIZE, USBD_EP_TYPE_CTRL);
+	pdev->ep_in[0].is_used = 1U;
 	pdev->ep_in[0].maxpacket = USB_MAX_EP0_SIZE;
 
 	usb->GINTSTS |= USB_OTG_GINTSTS_ENUMDNE;
@@ -1221,7 +845,6 @@ static inline void IEP_FIFO_empty_IRQ(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	// disable interrupt if transfer done
 	if (ep->xfer_len <= ep->xfer_count) { device->DIEPEMPMSK &= ~((uint32_t)(0x1UL << ep_num)); }
 }
-// TODO< after open_EP
 static inline void OEP_transfer_complete(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
 	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
@@ -1229,9 +852,7 @@ static inline void OEP_transfer_complete(PCD_HandleTypeDef* hpcd, uint8_t ep_num
 	USBD_HandleTypeDef*			pdev =		hpcd->pData;
 	out->DOEPINT |= USB_OTG_DOEPINT_XFRC;
 
-	if (!(ep_num | ep->xfer_len)) {
-		(void)USB_EP0_OutStart(hpcd->Instance, 0U, (uint8_t *)hpcd->Setup);
-	}
+	if (!(ep_num | ep->xfer_len)) { start_OEP0(usb); }
 
 	if (!ep_num && pdev->ep0_state == USBD_EP0_DATA_OUT) {
 		USBD_EndpointTypeDef*	USBD_ep = &pdev->ep_out[0];
@@ -1251,7 +872,6 @@ static inline void OEP_transfer_complete(PCD_HandleTypeDef* hpcd, uint8_t ep_num
 		(void)pdev->pClass[0]->DataOut(pdev, ep_num);
 	}
 }
-// TODO /
 static inline void OEP_disabled(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
 	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
@@ -1272,28 +892,34 @@ static inline void OEP_disabled(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	}
 	out->DOEPINT |= USB_OTG_DOEPINT_EPDISD;
 }
-// TODO<
 static inline void OEP_setup_done(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
 	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE + (ep_num * USB_OTG_EP_REG_SIZE));
+	USBD_HandleTypeDef*			pdev =		hpcd->pData;
 	out->DOEPINT |= USB_OTG_DOEPINT_STUP;
 
-	const USB_OTG_GlobalTypeDef *USBx = hpcd->Instance;
-	uint32_t USBx_BASE = (uint32_t)USBx;
-	uint32_t gSNPSiD = *(__IO const uint32_t *)(&USBx->CID + 0x1U);
-	uint32_t DoepintReg = USBx_OUTEP(ep_num)->DOEPINT;
+	uint8_t* data =		hpcd->Setup;
+	uint8_t* header =	(uint8_t*)&pdev->header;
+	*header++ =	*data++;
+	*header++ =	*data++;
+	*header++ =	*data++;
+	*header++ =	*data++;
+	*header++ =	*data++;
+	*header++ =	*data++;
+	*header++ =	*data++;
+	*header =	*data;
 
-	if ((gSNPSiD > USB_OTG_CORE_ID_300A) &&
-		((DoepintReg & USB_OTG_DOEPINT_STPKTRX) == USB_OTG_DOEPINT_STPKTRX)) {
-		USBx_OUTEP(ep_num)->DOEPINT |= USB_OTG_DOEPINT_STPKTRX;
+	pdev->ep0_state = USBD_EP0_SETUP;
+	pdev->ep0_data_len = pdev->header.length;
+	switch (pdev->header.recipiant) {
+	case RECIPIANT_DEVICE:		return device_setup_request(pdev);
+	case RECIPIANT_INTERFACE:	return interface_setup_request(pdev);
+	case RECIPIANT_ENDPOINT:	return endpoint_setup_request(pdev);
+	default: break;
 	}
-
-	USBD_LL_SetupStage((USBD_HandleTypeDef*)hpcd->pData, (uint8_t *)hpcd->Setup);
-	if ((gSNPSiD > USB_OTG_CORE_ID_300A) && (hpcd->Init.dma_enable == 1U)) {
-		(void)USB_EP0_OutStart(hpcd->Instance, 1U, (uint8_t *)hpcd->Setup);
-	}
+	if (pdev->header.direction)	{ stall_IEP(pdev->pData, 0x0U); }
+	else						{ stall_OEP(pdev->pData, 0x0U); }
 }
-// /TODO
 static inline void USB_incomplete_ISO_IN_IRQ(PCD_HandleTypeDef* hpcd) {
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
 	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE);
@@ -1347,7 +973,6 @@ static inline void USB_wake_up_IRQ(PCD_HandleTypeDef* hpcd) {
 }
 
 
-// L1 ========================================= /
 static inline void IEP_common_handler(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
 	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);

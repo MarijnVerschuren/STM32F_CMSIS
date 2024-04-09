@@ -156,10 +156,11 @@ __ALIGN_BEGIN static uint8_t USBD_HID_Desc[USB_HID_DESC_SIZ] __ALIGN_END = {
 
 
 // defs
-extern HAL_StatusTypeDef HAL_PCD_EP_Close(PCD_HandleTypeDef *hpcd, uint8_t ep_addr);
-extern HAL_StatusTypeDef HAL_PCD_EP_Open(PCD_HandleTypeDef *hpcd, uint8_t ep_addr, uint16_t ep_mps, uint8_t ep_type);
-extern USBD_StatusTypeDef USBD_CtlSendData(USBD_HandleTypeDef *pdev, uint8_t *pbuf, uint32_t len);
-
+extern void IEP0_transfer(USBD_HandleTypeDef* handle, uint8_t *buffer, uint32_t size);
+extern void open_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type);
+extern void open_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type);
+extern void close_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
+extern void close_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
 extern void stall_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
 extern void stall_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
 extern void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
@@ -225,7 +226,7 @@ static uint8_t USBD_HID_Init(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
 	pdev->ep_in[HIDInEpAdd & 0xFU].bInterval = HID_FS_BINTERVAL;
 
 	/* Open EP IN */
-	(void)HAL_PCD_EP_Open(pdev->pData, HIDInEpAdd, HID_EPIN_SIZE, USBD_EP_TYPE_INTR);
+	open_IEP(pdev->pData, HIDInEpAdd, HID_EPIN_SIZE, USBD_EP_TYPE_INTR);
 	pdev->ep_in[HIDInEpAdd & 0xFU].is_used = 1U;
 
 	hhid->state = USBD_HID_IDLE;
@@ -235,7 +236,7 @@ static uint8_t USBD_HID_DeInit(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
 	UNUSED(cfgidx);
 
 	/* Close HID EPs */
-	(void)HAL_PCD_EP_Close(pdev->pData, HIDInEpAdd);
+	close_IEP(pdev->pData, HIDInEpAdd);
 	pdev->ep_in[HIDInEpAdd & 0xFU].is_used = 0U;
 	pdev->ep_in[HIDInEpAdd & 0xFU].bInterval = 0U;
 
@@ -268,7 +269,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					break;
 
 				case USBD_HID_REQ_GET_PROTOCOL:
-					(void)USBD_CtlSendData(pdev, (uint8_t *)&hhid->Protocol, 1U);
+					IEP0_transfer(pdev, (uint8_t *)&hhid->Protocol, 1U);
 					break;
 
 				case USBD_HID_REQ_SET_IDLE:
@@ -276,7 +277,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 					break;
 
 				case USBD_HID_REQ_GET_IDLE:
-					(void)USBD_CtlSendData(pdev, (uint8_t *)&hhid->IdleState, 1U);
+					IEP0_transfer(pdev, (uint8_t *)&hhid->IdleState, 1U);
 					break;
 
 				default:
@@ -291,7 +292,7 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 				case USB_REQ_GET_STATUS:
 					if (pdev->dev_state == USBD_STATE_CONFIGURED)
 					{
-						(void)USBD_CtlSendData(pdev, (uint8_t *)&status_info, 2U);
+						IEP0_transfer(pdev, (uint8_t *)&status_info, 2U);
 					}
 					else
 					{
@@ -317,13 +318,13 @@ static uint8_t USBD_HID_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *re
 						ret = USBD_FAIL;
 						break;
 					}
-					(void)USBD_CtlSendData(pdev, pbuf, len);
+					IEP0_transfer(pdev, pbuf, len);
 					break;
 
 				case USB_REQ_GET_INTERFACE :
 					if (pdev->dev_state == USBD_STATE_CONFIGURED)
 					{
-						(void)USBD_CtlSendData(pdev, (uint8_t *)&hhid->AltSetting, 1U);
+						IEP0_transfer(pdev, (uint8_t *)&hhid->AltSetting, 1U);
 					}
 					else
 					{

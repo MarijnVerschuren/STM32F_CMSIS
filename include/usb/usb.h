@@ -194,6 +194,29 @@ __STATIC_INLINE uint16_t SWAPBYTE(uint8_t *addr) {
 /*!<
  * enum types
  * */
+// L0.0
+typedef enum {
+	STANDARD_REQUEST =		0b00,
+	CLASS_REQUEST =			0b01,
+	VENDOR_REQUEST =		0b10
+}	SETUP_request_type_t;
+typedef enum {
+	RECIPIANT_DEVICE =		0b00000,
+	RECIPIANT_INTERFACE =	0b00001,
+	RECIPIANT_ENDPOINT =	0b00010
+}	SETUP_recipiant_t;
+typedef enum {
+	GET_STATUS =			0x00,						// 2B read
+	CLEAR_FEATURE =			0x01,						// clear feature addressed by "value"
+	SET_FEATURE =			0x03,						// set feature addressed by "value"
+	SET_ADDRESS =			0x05,						// set address in "value"
+	GET_DESCRIPTOR =		0x06,						// [length]B read, descriptor type and index in "value"
+	SET_DESCRIPTOR =		0x07,						// [length]B write, descriptor type and index in "value"
+	GET_CONFIGURATION =		0x08,						// 1B read
+	SET_CONFIGURATION =		0x09,						// config addressed by "value"
+}	SETUP_command_t;
+
+
 // L1 ========================================= /
 typedef enum {
 	HAL_OK       = 0x00U,
@@ -255,6 +278,26 @@ typedef USB_ModeTypeDef     USB_OTG_ModeTypeDef;
 /*!<
  * struct types
  * */
+// L0.0
+typedef __PACKED_STRUCT {
+	uint32_t EPNUM		: 4;	// endpoint number
+	uint32_t BCNT		: 11;	// byte count
+	uint32_t DPID		: 2;	// data PID
+	uint32_t PKTSTS		: 4;	// packet status
+	uint32_t _			: 11;
+}	GRXSTS_t;
+
+typedef __PACKED_STRUCT {
+	SETUP_recipiant_t		    recipiant	: 5;		// |
+	SETUP_request_type_t	    type		: 2;		// | bmRequest
+	uint8_t					    direction	: 1;		// |  // TODO: MSB?!!!!!!!!!!!!!!!!!!
+	SETUP_command_t			    command;				// bRequest
+	uint16_t				    value;					// wValue
+	uint16_t				    index;					// wIndex
+	uint16_t				    length;					// wLength
+}	setup_header_t;
+
+
 // L1 ========================================= /
 typedef struct {
 	uint32_t status;
@@ -321,7 +364,8 @@ typedef struct _USBD_HandleTypeDef {
 	uint32_t                dev_remote_wakeup;
 	uint8_t                 ConfIdx;
 
-	USBD_SetupReqTypedef    request;
+	//USBD_SetupReqTypedef    request;
+	setup_header_t			header;
 	USBD_DescriptorsTypeDef *pDesc;
 	USBD_ClassTypeDef       *pClass[USBD_MAX_SUPPORTED_CLASS];
 	void                    *pClassData;
