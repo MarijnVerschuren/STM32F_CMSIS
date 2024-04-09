@@ -16,13 +16,17 @@
 #define STS_SETUP_UPDT                         6U
 
 
-// external functions
+/*!<
+ * external functions
+ * */
 extern void flush_RX_FIFO(USB_OTG_GlobalTypeDef* usb);
 extern void flush_TX_FIFO(USB_OTG_GlobalTypeDef* usb, uint8_t ep);
 extern void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb);
 
 
-// IO
+/*!<
+ * IO
+ * */
 static inline void USB_write_packet(const USB_OTG_GlobalTypeDef *usb, uint8_t *src, uint8_t ep_num, uint16_t len) {
 	uint32_t*	FIFO = (uint32_t*)((uint32_t)usb + (0x1000UL * (ep_num + 1U)));
 	uint32_t	word_count;
@@ -132,7 +136,9 @@ void start_OEP0(USB_OTG_GlobalTypeDef* usb) {
 }
 
 
-// EP init
+/*!<
+ * ep init
+ * */
 void open_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type) {
 	ep_num &= 0xF;
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
@@ -220,7 +226,9 @@ void close_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num) {
 }
 
 
-// stall/un-stall
+/*!<
+ * stall/un-stall
+ * */
 void stall_IEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	ep_num &= 0xFU;  // TODO: needed?
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
@@ -286,7 +294,9 @@ void unstall_OEP(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 }
 
 
-// requests
+/*!<
+ * request handling
+ * */
 static inline void get_device_status(USBD_HandleTypeDef* pdev) {
 	if (
 		pdev->dev_state == USBD_STATE_SUSPENDED ||
@@ -970,7 +980,9 @@ static inline void USB_wake_up_IRQ(PCD_HandleTypeDef* hpcd) {
 }
 
 
-// handlers
+/*!<
+ * handlers
+ * */
 static inline void IEP_common_handler(PCD_HandleTypeDef* hpcd, uint8_t ep_num) {
 	USB_OTG_GlobalTypeDef* 		usb =		hpcd->Instance;
 	USB_OTG_DeviceTypeDef*		device =	(void*)(((uint32_t)usb) + USB_OTG_DEVICE_BASE);
@@ -1100,6 +1112,8 @@ static inline void USB_wakeup_handler(PCD_HandleTypeDef* hpcd) {
 }
 
 
-// interrupts
+/*!<
+ * interrupts
+ * */
 void OTG_FS_IRQHandler(void)		{ USB_common_handler(&hpcd_USB_OTG_FS); }
 void OTG_FS_WKUP_IRQHandler(void)	{ USB_wakeup_handler(&hpcd_USB_OTG_FS); }

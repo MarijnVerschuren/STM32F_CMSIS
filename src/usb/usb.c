@@ -4,32 +4,11 @@
 
 #include "usb/usb.h"
 
+/*!<
+ * defines
+ * */
+#define USB_OTG_FS_WAKEUP_EXTI_LINE	(0x1U << 18)  /*!< USB FS EXTI Line WakeUp Interrupt */
 
-// status TODO: delete
-void /*L0*/ Error_Handler(void) {
-	for(;;);
-}
-USBD_StatusTypeDef /*L2*/ USBD_Get_USB_Status(HAL_StatusTypeDef hal_status) {
-	USBD_StatusTypeDef usb_status = USBD_OK;
-	switch (hal_status) {
-		case HAL_OK :
-			usb_status = USBD_OK;
-			break;
-		case HAL_ERROR :
-			usb_status = USBD_FAIL;
-			break;
-		case HAL_BUSY :
-			usb_status = USBD_BUSY;
-			break;
-		case HAL_TIMEOUT :
-			usb_status = USBD_FAIL;
-			break;
-		default :
-			usb_status = USBD_FAIL;
-			break;
-	}
-	return usb_status;
-}
 
 /*!<
  * variables
@@ -65,16 +44,6 @@ void flush_TX_FIFOS(USB_OTG_GlobalTypeDef* usb) {
 }
 
 
-// L1
-#define USB_OTG_FS_WAKEUP_EXTI_LINE                                   (0x1U << 18)  /*!< USB FS EXTI Line WakeUp Interrupt */
-#define __HAL_USB_OTG_FS_WAKEUP_EXTI_CLEAR_FLAG()   EXTI->PR = USB_OTG_FS_WAKEUP_EXTI_LINE
-#define __HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_RISING_EDGE() \
-  do { \
-    EXTI->FTSR &= ~(USB_OTG_FS_WAKEUP_EXTI_LINE); \
-    EXTI->RTSR |= USB_OTG_FS_WAKEUP_EXTI_LINE; \
-  } while(0U)
-#define __HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_IT()    EXTI->IMR |= USB_OTG_FS_WAKEUP_EXTI_LINE
-
 /*!<
  * init
  * */
@@ -84,7 +53,6 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	USB_OTG_INEndpointTypeDef*	in =		(void*)(((uint32_t)usb) + USB_OTG_IN_ENDPOINT_BASE);
 	USB_OTG_OUTEndpointTypeDef*	out =		(void*)(((uint32_t)usb) + USB_OTG_OUT_ENDPOINT_BASE);
 	__IO uint32_t*				PCGCCTL =	(void*)(((uint32_t)usb) + USB_OTG_PCGCCTL_BASE);
-
 
 	// USBD_Init
 	hUsbDeviceFS.pClass[0] =		NULL;
@@ -119,9 +87,10 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	NVIC_SetPriority(OTG_FS_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
 	NVIC_EnableIRQ(OTG_FS_IRQn);
 	if(hpcd_USB_OTG_FS.Init.low_power_enable == 1) {
-		__HAL_USB_OTG_FS_WAKEUP_EXTI_CLEAR_FLAG();
-		__HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_RISING_EDGE();
-		__HAL_USB_OTG_FS_WAKEUP_EXTI_ENABLE_IT();
+		EXTI->PR =		USB_OTG_FS_WAKEUP_EXTI_LINE;
+		EXTI->FTSR &=	~(USB_OTG_FS_WAKEUP_EXTI_LINE);
+		EXTI->RTSR |=	USB_OTG_FS_WAKEUP_EXTI_LINE;
+		EXTI->IMR |=	USB_OTG_FS_WAKEUP_EXTI_LINE;
 		NVIC_SetPriority(OTG_FS_WKUP_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
 		NVIC_EnableIRQ(OTG_FS_WKUP_IRQn);
 	}
