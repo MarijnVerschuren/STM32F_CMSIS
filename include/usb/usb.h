@@ -135,93 +135,86 @@ typedef __PACKED_STRUCT {
 
 // L1 ========================================= /
 typedef struct {
-	uint32_t status;
-	uint32_t total_length;
-	uint32_t rem_length;
-	uint32_t maxpacket;
-	uint16_t is_used;
-	uint16_t bInterval;
-} USBD_EndpointTypeDef;
-
-typedef struct {
-	uint8_t *(*GetDeviceDescriptor)(uint16_t *length);
-	uint8_t *(*GetLangIDStrDescriptor)(uint16_t *length);
-	uint8_t *(*GetManufacturerStrDescriptor)(uint16_t *length);
-	uint8_t *(*GetProductStrDescriptor)(uint16_t *length);
-	uint8_t *(*GetSerialStrDescriptor)(uint16_t *length);
-	uint8_t *(*GetConfigurationStrDescriptor)(uint16_t *length);
-	uint8_t *(*GetInterfaceStrDescriptor)(uint16_t *length);
+	uint8_t* device_descriptor;
+	uint16_t device_descriptor_size;
+	uint8_t* language_ID_string_descriptor;
+	uint16_t language_ID_string_descriptor_size;
+	uint8_t* manufacturer_string_descriptor;
+	uint16_t manufacturer_string_descriptor_size;
+	uint8_t* product_string_descriptor;
+	uint16_t product_string_descriptor_size;
+	uint8_t* serial_string_descriptor;
+	uint16_t serial_string_descriptor_size;
+	uint8_t* configuration_string_descriptor;
+	uint16_t configuration_string_descriptor_size;
+	uint8_t* interface_string_descriptor;
+	uint16_t interface_string_descriptor_size;
 } USBD_DescriptorsTypeDef;
 
-typedef struct _Device_cb {
-	uint8_t (*Init)(void* handle, uint8_t cfgidx);
-	void (*DeInit)(void* handle, uint8_t cfgidx);
-	/* Control Endpoints*/
-	void (*Setup)(void* handle, setup_header_t* req);
-	void (*EP0_TxSent)(void* handle);
-	void (*EP0_RxReady)(void* handle);
-	/* Class Specific Endpoints*/
-	void (*DataIn)(void* handle, uint8_t epnum);
-	void (*DataOut)(void* handle, uint8_t epnum);
-	void (*SOF)(void* handle);
-	void (*IsoINIncomplete)(void* handle, uint8_t epnum);
-	void (*IsoOUTIncomplete)(void* handle, uint8_t epnum);
+typedef struct {
+	uint8_t	(*config)				(void* handle, uint8_t cfgidx);
+	void	(*DeInit)			(void* handle, uint8_t cfgidx);
 
-	uint8_t  *(*GetFSConfigDescriptor)(uint16_t *length);
+	void	(*setup)			(void* handle, setup_header_t* req);
+	void	(*EP0_TxSent)		(void* handle);
+	void	(*EP0_RxReady)		(void* handle);
+
+	void	(*DataIn)			(void* handle, uint8_t epnum);
+	void	(*DataOut)			(void* handle, uint8_t epnum);
+	void	(*SOF)				(void* handle);
+	void	(*IsoINIncomplete)	(void* handle, uint8_t epnum);
+	void	(*IsoOUTIncomplete)	(void* handle, uint8_t epnum);
+
+	uint8_t* configuration_descriptor;
+	uint16_t configuration_descriptor_size;
 } USBD_ClassTypeDef;
 
 // L2 ========================================= /
 typedef struct {
-	uint8_t dev_endpoints;            /*!< Device Endpoints number. This parameter depends on the used USB core. This parameter must be a number between Min_Data = 1 and Max_Data = 15 */
-	uint8_t ep0_mps;                 /*!< Set the Endpoint 0 Max Packet size.                                    */
-	uint8_t Sof_enable;              /*!< Enable or disable the output of the SOF signal.                        */
-	uint8_t low_power_enable;        /*!< Enable or disable the low Power Mode.                                  */
-	uint8_t battery_charging_enable; /*!< Enable or disable Battery charging.                                    */
-	uint8_t vbus_sensing_enable;     /*!< Enable or disable the VBUS Sensing feature.                            */
-} USB_CfgTypeDef;
+	uint8_t dev_endpoints			: 4;
+	uint8_t Sof_enable				: 1;
+	uint8_t low_power_enable		: 1;
+	uint8_t battery_charging_enable	: 1;
+	uint8_t vbus_sensing_enable		: 1;
+} USB_config_t;
 
 typedef struct {
-	uint8_t   num;                  /*!< Endpoint number This parameter must be a number between Min_Data = 1 and Max_Data = 15   */
-	uint8_t   is_in;                /*!< Endpoint direction This parameter must be a number between Min_Data = 0 and Max_Data = 1    */
-	uint8_t   is_stall;             /*!< Endpoint stall condition This parameter must be a number between Min_Data = 0 and Max_Data = 1    */
-	uint8_t   is_iso_incomplete;    /*!< Endpoint isoc condition This parameter must be a number between Min_Data = 0 and Max_Data = 1    */
-	uint8_t   type;                 /*!< Endpoint type This parameter can be any value of @ref USB_LL_EP_Type                   */
-	uint8_t   data_pid_start;       /*!< Initial data PID This parameter must be a number between Min_Data = 0 and Max_Data = 1    */
-	uint32_t  maxpacket;            /*!< Endpoint Max packet size This parameter must be a number between Min_Data = 0 and Max_Data = 64KB */
-	uint8_t   *xfer_buff;           /*!< Pointer to transfer buffer                                               */
-	uint32_t  xfer_len;             /*!< Current transfer length                                                  */
-	uint32_t  xfer_count;           /*!< Partial transfer length in case of multi packet transfer                 */
-	uint8_t   even_odd_frame;       /*!< IFrame parity This parameter must be a number between Min_Data = 0 and Max_Data = 1    */
-	uint16_t  tx_fifo_num;          /*!< Transmission FIFO number This parameter must be a number between Min_Data = 1 and Max_Data = 15   */
-	uint32_t  dma_addr;             /*!< 32 bits aligned transfer buffer address                                  */
-	uint32_t  xfer_size;            /*!< requested transfer size                                                  */
+	uint8_t   is_stall;
+	uint8_t   is_iso_incomplete;
+	uint8_t   type;
+	uint32_t  maxpacket;
+	uint8_t*  xfer_buff;
+	uint32_t  xfer_len;
+	uint32_t  xfer_count;
+	uint32_t  xfer_size;
+
+	uint16_t status;
+	uint32_t total_length;
+	uint32_t rem_length;
+	uint16_t is_used;
 } USB_EPTypeDef;
 
 typedef struct {
-	USB_OTG_GlobalTypeDef*	Instance;   /*!< Register base address             */
-	USB_CfgTypeDef			Init;        /*!< PCD required parameters           */
-	__IO uint8_t            USB_Address; /*!< USB Address                       */
-	USB_EPTypeDef           IN_ep[16];   /*!< IN endpoint parameters            */
-	USB_EPTypeDef           OUT_ep[16];  /*!< OUT endpoint parameters           */
-	__IO  uint32_t          ErrorCode;   /*!< PCD Error code                    */
-	uint32_t                Setup[12];   /*!< Setup packet buffer               */
-	uint32_t                FrameNumber; /*!< Store Current Frame number        */
-	uint32_t battery_charging_active;    /*!< Enable or disable Battery charging. This parameter can be set to ENABLE or DISABLE        */
+	USB_OTG_GlobalTypeDef*		instance;
+	USB_config_t				config;
+	__IO uint8_t				address;
+	USB_EPTypeDef				IN_ep[16];
+	USB_EPTypeDef				OUT_ep[16];
+	uint32_t					setup[12];
+	uint32_t					frame_number;
 
-	uint32_t                dev_config;
-	uint32_t                dev_default_config;
-	uint32_t                dev_config_status;
-	USBD_EndpointTypeDef    ep_in[16];
-	USBD_EndpointTypeDef    ep_out[16];
-	__IO uint32_t           ep0_state;
-	uint32_t                ep0_data_len;
-	__IO uint8_t            dev_state;
-	__IO uint8_t            dev_old_state;
-	uint32_t                dev_remote_wakeup;
+	uint32_t					dev_config;
+	uint32_t					dev_default_config;
+	uint32_t					dev_config_status;
+	__IO uint32_t				ep0_state;
+	uint32_t					ep0_data_len;
+	__IO uint8_t				dev_state;
+	__IO uint8_t				dev_old_state;
+	uint32_t					dev_remote_wakeup;
 
-	setup_header_t			header;
-	USBD_DescriptorsTypeDef *pDesc;
-	USBD_ClassTypeDef       *pClass;
+	setup_header_t				header;
+	USBD_DescriptorsTypeDef*	desc;
+	USBD_ClassTypeDef*			class;
 } USB_handle_t;
 
 
@@ -229,7 +222,6 @@ typedef struct {
  * variables
  * */
 extern USBD_DescriptorsTypeDef FS_Desc;  // TODO: init
-extern USBD_ClassTypeDef USBD_HID;  // TODO: init
 USB_handle_t USB_handle;
 
 

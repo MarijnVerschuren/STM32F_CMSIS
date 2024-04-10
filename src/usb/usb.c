@@ -54,15 +54,15 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	__IO uint32_t*				PCGCCTL =	(void*)(((uint32_t)usb) + USB_OTG_PCGCCTL_BASE);
 
 	// USBD_Init
-	USB_handle.pClass =		NULL;
-	USB_handle.pDesc =			&FS_Desc;
+	USB_handle.class =			NULL;
+	USB_handle.desc =			&FS_Desc;
 	USB_handle.dev_state =		USBD_STATE_DEFAULT;
 	// USBD_LL_Init
-	USB_handle.Instance = usb;
-	USB_handle.Init.dev_endpoints = 4;
-	USB_handle.Init.Sof_enable = DISABLE;
-	USB_handle.Init.low_power_enable = ENABLE;  // TODO!!!
-	USB_handle.Init.vbus_sensing_enable = DISABLE;
+	USB_handle.instance = usb;
+	USB_handle.config.dev_endpoints = 4;
+	USB_handle.config.Sof_enable = DISABLE;
+	USB_handle.config.low_power_enable = ENABLE;  // TODO!!!
+	USB_handle.config.vbus_sensing_enable = DISABLE;
 	// HAL_PCD_Init
 	// HAL_PCD_Msp_Init
 	fconfig_GPIO(GPIOA, 11, GPIO_alt_func, GPIO_no_pull, GPIO_push_pull, GPIO_very_high_speed, 10);
@@ -75,7 +75,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	uint32_t prioritygroup = NVIC_GetPriorityGrouping();
 	NVIC_SetPriority(OTG_FS_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
 	NVIC_EnableIRQ(OTG_FS_IRQn);
-	if(USB_handle.Init.low_power_enable == 1) {
+	if(USB_handle.config.low_power_enable == 1) {
 		EXTI->PR =		USB_OTG_FS_WAKEUP_EXTI_LINE;
 		EXTI->FTSR &=	~(USB_OTG_FS_WAKEUP_EXTI_LINE);
 		EXTI->RTSR |=	USB_OTG_FS_WAKEUP_EXTI_LINE;
@@ -94,7 +94,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	usb->GRSTCTL |= USB_OTG_GRSTCTL_CSRST;					// reset the core
 	while (usb->GRSTCTL & USB_OTG_GRSTCTL_CSRST);			// wait until reset is processed
 
-	if (USB_handle.Init.battery_charging_enable == 0U) {
+	if (USB_handle.config.battery_charging_enable == 0U) {
 		usb->GCCFG |= USB_OTG_GCCFG_PWRDWN;
 	} else {
 		usb->GCCFG &= ~(USB_OTG_GCCFG_PWRDWN);
@@ -105,17 +105,12 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	usb->GUSBCFG |= USB_OTG_GUSBCFG_FDMOD;
 	while ((usb->GINTSTS) & 0b1U);
 
-	for (i = 0U; i < USB_handle.Init.dev_endpoints; i++) {
-		USB_handle.IN_ep[i].is_in = 1U;
-		USB_handle.IN_ep[i].num = i;
-		USB_handle.IN_ep[i].tx_fifo_num = i;
+	for (i = 0U; i < USB_handle.config.dev_endpoints; i++) {
 		USB_handle.IN_ep[i].type = EP_TYPE_CTRL;
 		USB_handle.IN_ep[i].maxpacket = 0U;
 		USB_handle.IN_ep[i].xfer_buff = 0U;
 		USB_handle.IN_ep[i].xfer_len = 0U;
 
-		USB_handle.OUT_ep[i].is_in = 0U;
-		USB_handle.OUT_ep[i].num = i;
 		USB_handle.OUT_ep[i].type = EP_TYPE_CTRL;
 		USB_handle.OUT_ep[i].maxpacket = 0U;
 		USB_handle.OUT_ep[i].xfer_buff = 0U;
@@ -126,7 +121,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	for (i = 0U; i < 15U; i++) {
 		usb->DIEPTXF[i] = 0U;
 	}
-	if (USB_handle.Init.vbus_sensing_enable == 0U) {
+	if (USB_handle.config.vbus_sensing_enable == 0U) {
 		/*
      * Disable HW VBUS sensing. VBUS is internally considered to be always
      * at VBUS-Valid level (5V).
@@ -156,7 +151,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	device->DOEPMSK = 0U;
 	device->DAINTMSK = 0U;
 
-	for (i = 0U; i < USB_handle.Init.dev_endpoints; i++) {
+	for (i = 0U; i < USB_handle.config.dev_endpoints; i++) {
 		if ((in[i].DIEPCTL & USB_OTG_DIEPCTL_EPENA) == USB_OTG_DIEPCTL_EPENA) {
 			if (i == 0U) {
 				in[i].DIEPCTL = USB_OTG_DIEPCTL_SNAK;
@@ -169,7 +164,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 		in[i].DIEPTSIZ = 0U;
 		in[i].DIEPINT  = 0xFB7FU;
 	}
-	for (i = 0U; i < USB_handle.Init.dev_endpoints; i++) {
+	for (i = 0U; i < USB_handle.config.dev_endpoints; i++) {
 		if ((out[i].DOEPCTL & USB_OTG_DOEPCTL_EPENA) == USB_OTG_DOEPCTL_EPENA) {
 			if (i == 0U) {
 				out[i].DOEPCTL = USB_OTG_DOEPCTL_SNAK;
@@ -199,16 +194,16 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 		USB_OTG_GINTMSK_WUIM
 	);
 
-	if (USB_handle.Init.Sof_enable != 0U) {
+	if (USB_handle.config.Sof_enable != 0U) {
 		usb->GINTMSK |= USB_OTG_GINTMSK_SOFM;
 	}
 
-	if (USB_handle.Init.vbus_sensing_enable == 1U) {
+	if (USB_handle.config.vbus_sensing_enable == 1U) {
 		usb->GINTMSK |= (USB_OTG_GINTMSK_SRQIM | USB_OTG_GINTMSK_OTGINT);
 	}
 	// ~ USB_DevInit
 
-	USB_handle.USB_Address = 0U;
+	USB_handle.address = 0U;
 	// USB_DevDisconnect
 	*PCGCCTL &= ~(USB_OTG_PCGCCTL_STOPCLK | USB_OTG_PCGCCTL_GATECLK);
 	device->DCTL |= USB_OTG_DCTL_SDIS;
@@ -221,14 +216,15 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	// ~ USBD_Init
 
 	// USBD_RegisterClass
-	USB_handle.pClass = &USBD_HID;
+#include "usb/hid.h"
+	USB_handle.class = &USBD_HID;
 	// ~ USBD_RegisterClass
 
 	// USBD_Start
 	// USBD_LL_Start
 	// HAL_PCD_Start
 	if (((usb->GUSBCFG & USB_OTG_GUSBCFG_PHYSEL) != 0U) &&
-		(USB_handle.Init.battery_charging_enable == 1U)) {
+		(USB_handle.config.battery_charging_enable == 1U)) {
 		/* Enable USB Transceiver */
 		usb->GCCFG |= USB_OTG_GCCFG_PWRDWN;
 	}

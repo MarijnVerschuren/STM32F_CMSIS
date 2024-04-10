@@ -8,7 +8,6 @@
  * definitions
  * */
 #define SERIAL_STRING_DESCRIPTOR_SIZE	0x1AU
-#define MAX_STRING_DESCRIPTOR_SIZE		0x30U
 #define DEVICE_DESCRIPTOR_SIZE			0x12U
 #define LANG_ID_STRING_DESCRIPTOR_SIZE	0x04U
 
@@ -18,27 +17,6 @@
 #define  USBD_IDX_SERIAL_STR                            0x03U
 #define  USBD_IDX_CONFIG_STR                            0x04U
 #define  USBD_IDX_INTERFACE_STR                         0x05U
-
-
-/*!<
- * handle and struct init
- * */
-uint8_t* get_device_descriptor(uint16_t* length);
-uint8_t* get_lang_ID_string_descriptor(uint16_t* length);
-uint8_t* get_manufacturer_string_descriptor(uint16_t* length);
-uint8_t* get_product_string_descriptor(uint16_t* length);
-uint8_t* get_serial_string_descriptor(uint16_t* length);
-uint8_t* get_config_string_descriptor(uint16_t* length);
-uint8_t* get_interface_string_descriptor(uint16_t* length);
-USBD_DescriptorsTypeDef FS_Desc = {
-	get_device_descriptor,
-	get_lang_ID_string_descriptor,
-	get_manufacturer_string_descriptor,
-	get_product_string_descriptor,
-	get_serial_string_descriptor,
-	get_config_string_descriptor,
-	get_interface_string_descriptor
-};
 
 
 /*!<
@@ -70,58 +48,92 @@ __ALIGN_BEGIN uint8_t lang_ID_descriptor[LANG_ID_STRING_DESCRIPTOR_SIZE] __ALIGN
 	0x09U,
 	0x04U
 };
-__ALIGN_BEGIN uint8_t serial_string_descriptor[SERIAL_STRING_DESCRIPTOR_SIZE] __ALIGN_END = {
-	SERIAL_STRING_DESCRIPTOR_SIZE,
-	USB_STRING_DESCRIPTOR,
+__ALIGN_BEGIN uint8_t manufacturer_string_descriptor[0xE] __ALIGN_END = {
+		0xE,
+		USB_STRING_DESCRIPTOR,
+		'M', 0x00,
+		'A', 0x00,
+		'R', 0x00,
+		'I', 0x00,
+		'J', 0x00,
+		'N', 0x00,
 };
-// TODO: seperate descriptors
-__ALIGN_BEGIN uint8_t string_descriptor_buffer[MAX_STRING_DESCRIPTOR_SIZE] __ALIGN_END;
+__ALIGN_BEGIN uint8_t product_string_descriptor[0x16] __ALIGN_END = {
+		0x16,
+		USB_STRING_DESCRIPTOR,
+		'M', 0x00,
+		'A', 0x00,
+		'R', 0x00,
+		'I', 0x00,
+		'J', 0x00,
+		'N', 0x00,
+		' ', 0x00,
+		'H', 0x00,
+		'I', 0x00,
+		'D', 0x00,
+};
+__ALIGN_BEGIN uint8_t serial_string_descriptor[SERIAL_STRING_DESCRIPTOR_SIZE] __ALIGN_END = {
+		SERIAL_STRING_DESCRIPTOR_SIZE,
+		USB_STRING_DESCRIPTOR,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00,
+		'?', 0x00
+};
+__ALIGN_BEGIN uint8_t configuration_string_descriptor[0x16] __ALIGN_END = {
+		0x16,
+		USB_STRING_DESCRIPTOR,
+		'H', 0x00,
+		'I', 0x00,
+		'D', 0x00,
+		' ', 0x00,
+		'C', 0x00,
+		'O', 0x00,
+		'N', 0x00,
+		'F', 0x00,
+		'I', 0x00,
+		'G', 0x00,
+};
+__ALIGN_BEGIN uint8_t interface_string_descriptor[0x1C] __ALIGN_END = {
+		0x1C,
+		USB_STRING_DESCRIPTOR,
+		'H', 0x00,
+		'I', 0x00,
+		'D', 0x00,
+		' ', 0x00,
+		'I', 0x00,
+		'N', 0x00,
+		'T', 0x00,
+		'E', 0x00,
+		'R', 0x00,
+		'F', 0x00,
+		'A', 0x00,
+		'C', 0x00,
+		'E', 0x00,
+};
 
 
-/*!<
- * functions
- * */
-void set_string_descriptor(void* descriptor, uint8_t* unicode, uint16_t* len) {
-	uint8_t index = 0U;
-	*len = (strlen(descriptor) * 2U) + 2U;
-	unicode[index++] = *(uint8_t *)len;
-	unicode[index++] = USB_STRING_DESCRIPTOR;
-	uint8_t* src = descriptor;
-	while (*src) {
-		unicode[index++] = *src++;
-		unicode[index++] = 0U;
-	}
-}
-uint8_t* get_device_descriptor(uint16_t *length) {
-	*length = sizeof(device_descriptor);
-	return device_descriptor;
-}
-uint8_t* get_lang_ID_string_descriptor(uint16_t *length) {
-	*length = sizeof(lang_ID_descriptor);
-	return lang_ID_descriptor;
-}
-uint8_t* get_manufacturer_string_descriptor(uint16_t *length) {
-	set_string_descriptor("MARIJN", string_descriptor_buffer, length);
-	return string_descriptor_buffer;
-}
-uint8_t* get_product_string_descriptor(uint16_t *length) {
-	set_string_descriptor("MARIJN HID", string_descriptor_buffer, length);
-	return string_descriptor_buffer;
-}
-uint8_t* get_serial_string_descriptor(uint16_t *length) {
-	*length = SERIAL_STRING_DESCRIPTOR_SIZE;
-	uint8_t* dst = serial_string_descriptor + 2;
-	uint8_t* src = (uint8_t*)UID;
-	for (uint8_t i = 0; i < 12; i++) {
-		*dst++ = *src++;
-		*dst++ = 0x00;
-	} return (uint8_t*)serial_string_descriptor;
-}
-uint8_t* get_config_string_descriptor(uint16_t *length) {
-	set_string_descriptor("HID Config", string_descriptor_buffer, length);
-	return string_descriptor_buffer;
-}
-uint8_t* get_interface_string_descriptor(uint16_t *length) {
-	set_string_descriptor("HID Interface", string_descriptor_buffer, length);
-	return string_descriptor_buffer;
-}
+USBD_DescriptorsTypeDef FS_Desc = {
+	device_descriptor,
+	DEVICE_DESCRIPTOR_SIZE,
+	lang_ID_descriptor,
+	LANG_ID_STRING_DESCRIPTOR_SIZE,
+	manufacturer_string_descriptor,
+	sizeof(manufacturer_string_descriptor),
+	product_string_descriptor,
+	sizeof(product_string_descriptor),
+	serial_string_descriptor,
+	SERIAL_STRING_DESCRIPTOR_SIZE,
+	configuration_string_descriptor,
+	sizeof(configuration_string_descriptor),
+	interface_string_descriptor,
+	sizeof(interface_string_descriptor),
+};

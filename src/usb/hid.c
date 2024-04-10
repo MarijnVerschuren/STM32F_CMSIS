@@ -42,33 +42,9 @@ typedef struct {
 
 
 /*!<
- * handle and class definition
- * */
-HID_handle_t HID_handle;
-static uint8_t HID_init(void* handle, uint8_t cfgidx);
-static void HID_deinit(void* handle, uint8_t cfgidx);
-static void HID_setup(void* handle, setup_header_t* req);
-static void HID_in_transfer(void* handle, uint8_t epnum);
-static uint8_t *get_HID_config_descriptor(uint16_t *length);
-USBD_ClassTypeDef USBD_HID = {
-		HID_init,
-		HID_deinit,
-		HID_setup,
-		NULL,
-		NULL,
-		HID_in_transfer,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		get_HID_config_descriptor
-};
-
-
-/*!<
  * descriptors TODO: elsewhere?
  * */
-__ALIGN_BEGIN static uint8_t USBD_HID_CfgDesc[HID_CONFIG_DESCRIPTOR_SIZE] __ALIGN_END = {
+__ALIGN_BEGIN uint8_t USBD_HID_CfgDesc[HID_CONFIG_DESCRIPTOR_SIZE] __ALIGN_END = {
 	0x09,                                               /* bLength: Configuration Descriptor size */
 	USB_CONFIG_DESCRIPTOR,                        /* bDescriptorType: Configuration */
 	HID_CONFIG_DESCRIPTOR_SIZE,                         /* wTotalLength: Bytes returned */
@@ -156,6 +132,30 @@ __ALIGN_BEGIN static uint8_t USBD_HID_Desc[HID_DESCRIPTOR_SIZE] __ALIGN_END = {
 
 
 /*!<
+ * handle and class definition
+ * */
+HID_handle_t HID_handle;
+static uint8_t HID_init(void* handle, uint8_t cfgidx);
+static void HID_deinit(void* handle, uint8_t cfgidx);
+static void HID_setup(void* handle, setup_header_t* req);
+static void HID_in_transfer(void* handle, uint8_t epnum);
+USBD_ClassTypeDef USBD_HID = {
+		HID_init,
+		HID_deinit,
+		HID_setup,
+		NULL,
+		NULL,
+		HID_in_transfer,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		USBD_HID_CfgDesc,
+		HID_CONFIG_DESCRIPTOR_SIZE
+};
+
+
+/*!<
  * imported functions
  * */
 extern void IN_transfer(USB_handle_t *handle, uint8_t ep_num, void* buffer, uint32_t size);
@@ -173,17 +173,15 @@ extern void stall_EP(USB_handle_t* handle, uint8_t ep_num);
  * */
 static uint8_t HID_init(void* handle, uint8_t config_index) {
 	(void)config_index;
-	((USB_handle_t*)handle)->ep_in[HID_IEP].bInterval = HID_FS_BINTERVAL;
 	open_IEP(handle, HID_IEP, HID_MPS, USBD_EP_TYPE_INTR);
-	((USB_handle_t*)handle)->ep_in[HID_IEP].is_used = 1U;
+	((USB_handle_t*)handle)->IN_ep[HID_IEP].is_used = 1U;
 	HID_handle.state = USBD_HID_IDLE;
 	return 0;
 }
 static void HID_deinit(void* handle, uint8_t config_index) {
 	(void)config_index;
 	close_IEP(handle, HID_IEP);
-	((USB_handle_t*)handle)->ep_in[HID_IEP].is_used = 0U;
-	((USB_handle_t*)handle)->ep_in[HID_IEP].bInterval = 0U;
+	((USB_handle_t*)handle)->IN_ep[HID_IEP].is_used = 0U;
 }
 static void HID_setup(void* handle, setup_header_t* request) {
 	uint16_t	size;
