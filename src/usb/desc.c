@@ -4,34 +4,39 @@
 #include "usb/usb.h"
 
 
-
-// L1 ========================================= /
+/*!<
+ * definitions
+ * */
 #define SERIAL_STRING_DESCRIPTOR_SIZE	0x1AU
 #define MAX_STRING_DESCRIPTOR_SIZE		0x30U
-
-uint8_t* USBD_FS_DeviceDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
-uint8_t* USBD_FS_LangIDStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
-uint8_t* USBD_FS_ManufacturerStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
-uint8_t* USBD_FS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
-uint8_t* USBD_FS_SerialStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
-uint8_t* USBD_FS_ConfigStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
-uint8_t* USBD_FS_InterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
+#define DEVICE_DESCRIPTOR_SIZE			0x12U
 
 
-// L0 ========================================= /
+/*!<
+ * handle and struct init
+ * */
+uint8_t* get_device_descriptor(uint16_t* length);
+uint8_t* get_lang_ID_string_descriptor(uint16_t* length);
+uint8_t* get_manufacturer_string_descriptor(uint16_t* length);
+uint8_t* get_product_string_descriptor(uint16_t* length);
+uint8_t* get_serial_string_descriptor(uint16_t* length);
+uint8_t* get_config_string_descriptor(uint16_t* length);
+uint8_t* get_interface_string_descriptor(uint16_t* length);
 USBD_DescriptorsTypeDef FS_Desc = {
-		USBD_FS_DeviceDescriptor,
-		USBD_FS_LangIDStrDescriptor,
-		USBD_FS_ManufacturerStrDescriptor,
-		USBD_FS_ProductStrDescriptor,
-		USBD_FS_SerialStrDescriptor,
-		USBD_FS_ConfigStrDescriptor,
-		USBD_FS_InterfaceStrDescriptor
+	get_device_descriptor,
+	get_lang_ID_string_descriptor,
+	get_manufacturer_string_descriptor,
+	get_product_string_descriptor,
+	get_serial_string_descriptor,
+	get_config_string_descriptor,
+	get_interface_string_descriptor
 };
 
 
-// L1 ========================================= /
-__ALIGN_BEGIN uint8_t USBD_FS_DeviceDesc[USB_LEN_DEV_DESC] __ALIGN_END = {
+/*!<
+ * descriptors TODO: elsewhere?
+ * */
+__ALIGN_BEGIN uint8_t USBD_FS_DeviceDesc[DEVICE_DESCRIPTOR_SIZE] __ALIGN_END = {
 	0x12,                       /*bLength */
 	USB_DESC_TYPE_DEVICE,       /*bDescriptorType*/
 	0x00,                       /*bcdUSB */
@@ -64,50 +69,38 @@ __ALIGN_BEGIN uint8_t USBD_StringSerial[SERIAL_STRING_DESCRIPTOR_SIZE] __ALIGN_E
 __ALIGN_BEGIN uint8_t USBD_StrDesc[MAX_STRING_DESCRIPTOR_SIZE] __ALIGN_END;
 
 
-
-// L2 ========================================= /
+/*!<
+ * functions
+ * */
 void set_string_descriptor(void* descriptor, uint8_t* unicode, uint16_t* len) {
 	uint8_t index = 0U;
-
 	*len = (strlen(descriptor) * 2U) + 2U;
-	unicode[index] = *(uint8_t *)len;
-	index++;
-	unicode[index] = USB_DESC_TYPE_STRING;
-	index++;
-
+	unicode[index++] = *(uint8_t *)len;
+	unicode[index++] = USB_DESC_TYPE_STRING;
 	uint8_t* src = descriptor;
 	while (*src) {
-		unicode[index] = *src++;
-		index++;
-		unicode[index] = 0U;
-		index++;
+		unicode[index++] = *src++;
+		unicode[index++] = 0U;
 	}
 }
-
-
-// L1 ========================================= /
-uint8_t* USBD_FS_DeviceDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
-	(void)speed;
+uint8_t* get_device_descriptor(uint16_t *length) {
 	*length = sizeof(USBD_FS_DeviceDesc);
 	return USBD_FS_DeviceDesc;
 }
-uint8_t* USBD_FS_LangIDStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
-	(void)speed;
+uint8_t* get_lang_ID_string_descriptor(uint16_t *length) {
 	*length = sizeof(USBD_LangIDDesc);
 	return USBD_LangIDDesc;
 }
-uint8_t* USBD_FS_ManufacturerStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
-	(void)speed;
+uint8_t* get_manufacturer_string_descriptor(uint16_t *length) {
 	set_string_descriptor("MARIJN", USBD_StrDesc, length);
 	return USBD_StrDesc;
 }
-uint8_t* USBD_FS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
-	(void)speed;
+uint8_t* get_product_string_descriptor(uint16_t *length) {
 	set_string_descriptor("MARIJN HID", USBD_StrDesc, length);
 	return USBD_StrDesc;
 }
-uint8_t* USBD_FS_SerialStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
-	(void)speed; *length = SERIAL_STRING_DESCRIPTOR_SIZE;
+uint8_t* get_serial_string_descriptor(uint16_t *length) {
+	*length = SERIAL_STRING_DESCRIPTOR_SIZE;
 	uint8_t* dst = USBD_StringSerial + 2;
 	uint8_t* src = (uint8_t*)UID;
 	for (uint8_t i = 0; i < 12; i++) {
@@ -115,13 +108,11 @@ uint8_t* USBD_FS_SerialStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) 
 		*dst++ = 0x00;
 	} return (uint8_t*)USBD_StringSerial;
 }
-uint8_t* USBD_FS_ConfigStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
-	(void)speed;
+uint8_t* get_config_string_descriptor(uint16_t *length) {
 	set_string_descriptor("HID Config", USBD_StrDesc, length);
 	return USBD_StrDesc;
 }
-uint8_t* USBD_FS_InterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
-	(void)speed;
+uint8_t* get_interface_string_descriptor(uint16_t *length) {
 	set_string_descriptor("HID Interface", USBD_StrDesc, length);
 	return USBD_StrDesc;
 }

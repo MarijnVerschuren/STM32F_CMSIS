@@ -11,55 +11,15 @@
 
 
 // macros and other hot fixes for BS
-#define UNUSED(X) (void)X      /* To avoid gcc/g++ warnings */
 #define __ALIGN_BEGIN
 #define __ALIGN_END
-
-#define __HAL_LOCK(__HANDLE__)                                           \
-                                do{                                        \
-                                    if((__HANDLE__)->Lock == HAL_LOCKED)   \
-                                    {                                      \
-                                       return HAL_BUSY;                    \
-                                    }                                      \
-                                    else                                   \
-                                    {                                      \
-                                       (__HANDLE__)->Lock = HAL_LOCKED;    \
-                                    }                                      \
-                                  }while (0U)
-#define __HAL_UNLOCK(__HANDLE__)                                          \
-                                  do{                                       \
-                                      (__HANDLE__)->Lock = HAL_UNLOCKED;    \
-                                    }while (0U)
-
-#define USBx_PCGCCTL    *(__IO uint32_t *)((uint32_t)USBx_BASE + USB_OTG_PCGCCTL_BASE)
-#define USBx_DEVICE     ((USB_OTG_DeviceTypeDef *)(USBx_BASE + USB_OTG_DEVICE_BASE))
-#define USBx_INEP(i)    ((USB_OTG_INEndpointTypeDef *)(USBx_BASE + USB_OTG_IN_ENDPOINT_BASE + ((i) * USB_OTG_EP_REG_SIZE)))
-#define USBx_OUTEP(i)   ((USB_OTG_OUTEndpointTypeDef *)(USBx_BASE + USB_OTG_OUT_ENDPOINT_BASE + ((i) * USB_OTG_EP_REG_SIZE)))
-#define USBx_DFIFO(i)   *(__IO uint32_t *)(USBx_BASE + USB_OTG_FIFO_BASE + ((i) * USB_OTG_FIFO_SIZE))
-
-#define MIN(a, b)  (((a) < (b)) ? (a) : (b))
-#define MAX(a, b)  (((a) > (b)) ? (a) : (b))
-#define LOBYTE(x)  ((uint8_t)((x) & 0x00FFU))
-#define HIBYTE(x)  ((uint8_t)(((x) & 0xFF00U) >> 8U))
-__STATIC_INLINE uint16_t SWAPBYTE(uint8_t *addr) {
-	uint16_t _SwapVal;
-	uint16_t _Byte1;
-	uint16_t _Byte2;
-	uint8_t *_pbuff = addr;
-
-	_Byte1 = *(uint8_t *)_pbuff;
-	_pbuff++;
-	_Byte2 = *(uint8_t *)_pbuff;
-
-	_SwapVal = (_Byte2 << 8) | _Byte1;
-
-	return _SwapVal;
-}
 
 /*!<
  * definitions
  * */
-// L1 ========================================= /
+// L1 ========================================= /  // TODO: typedef enum
+#define STS_DATA_UPDT                          2U
+#define STS_SETUP_UPDT                         6U
 #define USBD_MAX_SUPPORTED_CLASS                       1U
 #define USBD_MAX_NUM_CONFIGURATION     1U
 #define USBD_MAX_NUM_INTERFACES     1U
@@ -93,7 +53,6 @@ __STATIC_INLINE uint16_t SWAPBYTE(uint8_t *addr) {
 #define  USB_DESC_TYPE_BOS                              0x0FU
 
 #define  USB_LEN_DEV_QUALIFIER_DESC                     0x0AU
-#define  USB_LEN_DEV_DESC                               0x12U
 #define  USB_LEN_CFG_DESC                               0x09U
 #define  USB_LEN_IF_DESC                                0x09U
 #define  USB_LEN_EP_DESC                                0x07U
@@ -111,14 +70,6 @@ __STATIC_INLINE uint16_t SWAPBYTE(uint8_t *addr) {
 
 #define PCD_PHY_EMBEDDED             2U
 
-#define DSTS_ENUMSPD_HS_PHY_30MHZ_OR_60MHZ     (0U << 1)
-#define DSTS_ENUMSPD_FS_PHY_30MHZ_OR_60MHZ     (1U << 1)
-#define DSTS_ENUMSPD_FS_PHY_48MHZ              (3U << 1)
-
-#define USBD_HS_TRDT_VALUE                     9U
-#define USBD_FS_TRDT_VALUE                     5U
-#define USBD_DEFAULT_TRDT_VALUE                9U
-
 // L3 ========================================= /
 #define EP_TYPE_CTRL                           0U
 #define EP_TYPE_ISOC                           1U
@@ -133,29 +84,6 @@ __STATIC_INLINE uint16_t SWAPBYTE(uint8_t *addr) {
 #define USBD_EP0_STATUS_IN                              0x04U
 #define USBD_EP0_STATUS_OUT                             0x05U
 #define USBD_EP0_STALL                                  0x06U
-
-
-#define  USB_REQ_TYPE_STANDARD                          0x00U
-#define  USB_REQ_TYPE_CLASS                             0x20U
-#define  USB_REQ_TYPE_VENDOR                            0x40U
-#define  USB_REQ_TYPE_MASK                              0x60U
-
-#define  USB_REQ_RECIPIENT_DEVICE                       0x00U
-#define  USB_REQ_RECIPIENT_INTERFACE                    0x01U
-#define  USB_REQ_RECIPIENT_ENDPOINT                     0x02U
-#define  USB_REQ_RECIPIENT_MASK                         0x03U
-
-#define  USB_REQ_GET_STATUS                             0x00U
-#define  USB_REQ_CLEAR_FEATURE                          0x01U
-#define  USB_REQ_SET_FEATURE                            0x03U
-#define  USB_REQ_SET_ADDRESS                            0x05U
-#define  USB_REQ_GET_DESCRIPTOR                         0x06U
-#define  USB_REQ_SET_DESCRIPTOR                         0x07U
-#define  USB_REQ_GET_CONFIGURATION                      0x08U
-#define  USB_REQ_SET_CONFIGURATION                      0x09U
-#define  USB_REQ_GET_INTERFACE                          0x0AU
-#define  USB_REQ_SET_INTERFACE                          0x0BU
-#define  USB_REQ_SYNCH_FRAME                            0x0CU
 
 #define  USB_DESC_TYPE_DEVICE                           0x01U
 #define  USB_DESC_TYPE_CONFIGURATION                    0x02U
@@ -219,40 +147,8 @@ typedef enum {
 }	SETUP_command_t;
 
 
-// L1 ========================================= /
-typedef enum {
-	HAL_OK       = 0x00U,
-	HAL_ERROR    = 0x01U,
-	HAL_BUSY     = 0x02U,
-	HAL_TIMEOUT  = 0x03U
-} HAL_StatusTypeDef;
-
-typedef enum {
-	USBD_SPEED_HIGH  = 0U,
-	USBD_SPEED_FULL  = 1U,
-	USBD_SPEED_LOW   = 2U,
-} USBD_SpeedTypeDef;
 
 // L2 ========================================= /
-typedef enum {
-	USBD_OK = 0U,
-	USBD_BUSY,
-	USBD_EMEM,
-	USBD_FAIL,
-} USBD_StatusTypeDef;
-
-typedef enum {
-	HAL_UNLOCKED = 0x00U,
-	HAL_LOCKED   = 0x01U
-} HAL_LockTypeDef;
-
-typedef enum {
-	HAL_PCD_STATE_RESET   = 0x00,
-	HAL_PCD_STATE_READY   = 0x01,
-	HAL_PCD_STATE_ERROR   = 0x02,
-	HAL_PCD_STATE_BUSY    = 0x03,
-	HAL_PCD_STATE_TIMEOUT = 0x04
-} PCD_StateTypeDef;
 
 typedef enum {
 	LPM_L0 = 0x00, /* on */
@@ -311,13 +207,13 @@ typedef struct {
 } USBD_EndpointTypeDef;
 
 typedef struct {
-	uint8_t *(*GetDeviceDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
-	uint8_t *(*GetLangIDStrDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
-	uint8_t *(*GetManufacturerStrDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
-	uint8_t *(*GetProductStrDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
-	uint8_t *(*GetSerialStrDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
-	uint8_t *(*GetConfigurationStrDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
-	uint8_t *(*GetInterfaceStrDescriptor)(USBD_SpeedTypeDef speed, uint16_t *length);
+	uint8_t *(*GetDeviceDescriptor)(uint16_t *length);
+	uint8_t *(*GetLangIDStrDescriptor)(uint16_t *length);
+	uint8_t *(*GetManufacturerStrDescriptor)(uint16_t *length);
+	uint8_t *(*GetProductStrDescriptor)(uint16_t *length);
+	uint8_t *(*GetSerialStrDescriptor)(uint16_t *length);
+	uint8_t *(*GetConfigurationStrDescriptor)(uint16_t *length);
+	uint8_t *(*GetInterfaceStrDescriptor)(uint16_t *length);
 } USBD_DescriptorsTypeDef;
 
 typedef struct _Device_cb {
@@ -342,7 +238,6 @@ typedef struct _USBD_HandleTypeDef {
 	uint32_t                dev_config;
 	uint32_t                dev_default_config;
 	uint32_t                dev_config_status;
-	USBD_SpeedTypeDef       dev_speed;
 	USBD_EndpointTypeDef    ep_in[16];
 	USBD_EndpointTypeDef    ep_out[16];
 	__IO uint32_t           ep0_state;
@@ -416,8 +311,6 @@ typedef struct {
 	__IO uint8_t            USB_Address; /*!< USB Address                       */
 	PCD_EPTypeDef           IN_ep[16];   /*!< IN endpoint parameters            */
 	PCD_EPTypeDef           OUT_ep[16];  /*!< OUT endpoint parameters           */
-	HAL_LockTypeDef         Lock;        /*!< PCD peripheral status             */
-	__IO PCD_StateTypeDef   State;       /*!< PCD communication state           */
 	__IO  uint32_t          ErrorCode;   /*!< PCD Error code                    */
 	uint32_t                Setup[12];   /*!< Setup packet buffer               */
 	PCD_LPM_StateTypeDef    LPM_State;   /*!< LPM State                         */

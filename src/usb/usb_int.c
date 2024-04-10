@@ -2,18 +2,12 @@
 // Created by marijn on 4/2/24.
 //
 #include "usb/usb.h"
-//#include "usb/hid.h"
 
 
+/*!<
+ * defines
+ * */
 #define inline __attribute__((always_inline))
-
-
-// L1 ========================================= /  // TODO: typedef enum
-#define STS_GOUT_NAK                           1U
-#define STS_DATA_UPDT                          2U
-#define STS_XFER_COMP                          3U
-#define STS_SETUP_COMP                         4U
-#define STS_SETUP_UPDT                         6U
 
 
 /*!<
@@ -359,7 +353,7 @@ static inline void get_device_descriptor(USBD_HandleTypeDef* pdev) {
 
 	switch (pdev->header.value >> 8) {
 	case USB_DESC_TYPE_DEVICE:
-		buffer = pdev->pDesc->GetDeviceDescriptor(pdev->dev_speed, &size); break;
+		buffer = pdev->pDesc->GetDeviceDescriptor(&size); break;
 	case USB_DESC_TYPE_CONFIGURATION:
 		buffer = (uint8_t *)pdev->pClass[0]->GetFSConfigDescriptor(&size);
 		buffer[1] = USB_DESC_TYPE_CONFIGURATION; break;
@@ -367,27 +361,27 @@ static inline void get_device_descriptor(USBD_HandleTypeDef* pdev) {
 		switch (pdev->header.value & 0xFFU) {
 		case USBD_IDX_LANGID_STR:
 			if (pdev->pDesc->GetLangIDStrDescriptor) {
-				buffer = pdev->pDesc->GetLangIDStrDescriptor(pdev->dev_speed, &size); break;
+				buffer = pdev->pDesc->GetLangIDStrDescriptor(&size); break;
 			} return stall_EP(pdev->pData, 0x0U);
 		case USBD_IDX_MFC_STR:
 			if (pdev->pDesc->GetManufacturerStrDescriptor) {
-				buffer = pdev->pDesc->GetManufacturerStrDescriptor(pdev->dev_speed, &size); break;
+				buffer = pdev->pDesc->GetManufacturerStrDescriptor(&size); break;
 			} return stall_EP(pdev->pData, 0x0U);
 		case USBD_IDX_PRODUCT_STR:
 			if (pdev->pDesc->GetProductStrDescriptor) {
-				buffer = pdev->pDesc->GetProductStrDescriptor(pdev->dev_speed, &size); break;
+				buffer = pdev->pDesc->GetProductStrDescriptor(&size); break;
 			} return stall_EP(pdev->pData, 0x0U);
 		case USBD_IDX_SERIAL_STR:
 			if (pdev->pDesc->GetSerialStrDescriptor) {
-				buffer = pdev->pDesc->GetSerialStrDescriptor(pdev->dev_speed, &size); break;
+				buffer = pdev->pDesc->GetSerialStrDescriptor(&size); break;
 			} return stall_EP(pdev->pData, 0x0U);
 		case USBD_IDX_CONFIG_STR:
 			if (pdev->pDesc->GetConfigurationStrDescriptor) {
-				buffer = pdev->pDesc->GetConfigurationStrDescriptor(pdev->dev_speed, &size); break;
+				buffer = pdev->pDesc->GetConfigurationStrDescriptor(&size); break;
 			} return stall_EP(pdev->pData, 0x0U);
 		case USBD_IDX_INTERFACE_STR:
 			if (pdev->pDesc->GetInterfaceStrDescriptor) {
-				buffer = pdev->pDesc->GetInterfaceStrDescriptor(pdev->dev_speed, &size); break;
+				buffer = pdev->pDesc->GetInterfaceStrDescriptor(&size); break;
 			} return stall_EP(pdev->pData, 0x0U);
 		default:									return stall_EP(pdev->pData, 0x0U);
 		} break;
@@ -398,7 +392,7 @@ static inline void get_device_descriptor(USBD_HandleTypeDef* pdev) {
 
 	if (pdev->header.length) {
 		if (size) {
-			size = MIN(size, pdev->header.length);
+			if (size > pdev->header.length) { size = pdev->header.length; }
 			return IEP0_transfer(pdev, buffer, size);
 		} return stall_EP(pdev->pData, 0x0U);
 	}
@@ -573,15 +567,15 @@ static inline void endpoint_setup_request(USBD_HandleTypeDef* pdev) {
 	uint8_t ep_num = pdev->header.index & 0xFFU;
 
 	switch (pdev->header.type) {
-	case USB_REQ_TYPE_STANDARD:
+	case STANDARD_REQUEST:
 		switch (pdev->header.command) {
-		case USB_REQ_SET_FEATURE:	return set_endpoin_feature(pdev, ep_num);
-		case USB_REQ_CLEAR_FEATURE:	return clear_endpoint_feature(pdev, ep_num);
-		case USB_REQ_GET_STATUS:	return get_dendpoint_status(pdev, ep_num);
+		case SET_FEATURE:	return set_endpoin_feature(pdev, ep_num);
+		case CLEAR_FEATURE:	return clear_endpoint_feature(pdev, ep_num);
+		case GET_STATUS:	return get_dendpoint_status(pdev, ep_num);
 		default: break;
 		} break;
-	case USB_REQ_TYPE_CLASS:
-	case USB_REQ_TYPE_VENDOR:
+	case CLASS_REQUEST:
+	case VENDOR_REQUEST:
 		pdev->classId = 0;
 		if (pdev->pClass[0]->Setup) {
 			(void)pdev->pClass[0]->Setup(pdev, (void*)&pdev->header);
@@ -751,7 +745,6 @@ static inline void USB_enumeration_done_IRQ(PCD_HandleTypeDef* hpcd) {
 	else if	(PLLQ_clock_frequency < 32000000UL)	{ USB_OTG_FS->GUSBCFG |= 0x7U << USB_OTG_GUSBCFG_TRDT_Pos; }
 	else										{ USB_OTG_FS->GUSBCFG |= 0x6U << USB_OTG_GUSBCFG_TRDT_Pos; }
 
-	pdev->dev_speed = USBD_SPEED_FULL;
 	pdev->dev_state = USBD_STATE_DEFAULT;
 	pdev->ep0_state = USBD_EP0_IDLE;
 	pdev->dev_config = 0U;
@@ -865,7 +858,7 @@ static inline void OEP_transfer_complete(PCD_HandleTypeDef* hpcd, uint8_t ep_num
 		USBD_EndpointTypeDef*	USBD_ep = &pdev->ep_out[0];
 		if (USBD_ep->rem_length > USBD_ep->maxpacket) {
 			USBD_ep->rem_length -= USBD_ep->maxpacket;
-			OUT_transfer(hpcd, 0x00U, ep->xfer_buff, MIN(USBD_ep->rem_length, USBD_ep->maxpacket));
+			OUT_transfer(hpcd, 0x00U, ep->xfer_buff, USBD_ep->rem_length > USBD_ep->maxpacket ? USBD_ep->maxpacket : USBD_ep->rem_length);
 			return;
 		}
 		if (pdev->dev_state == USBD_STATE_CONFIGURED && pdev->pClass[0]->EP0_RxReady) {

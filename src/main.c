@@ -97,7 +97,7 @@ USB_OFF:
 	while (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED);
 	GPIO_write(LED_GPIO_PORT, LED_PIN, 0);
 
-	uint8_t code[6] = {2, 1, 1, 1, 1, 1};
+	uint8_t code[6] = {2, 2, 2, 2, 2, 2};
 	uint8_t i;
 	uint8_t delay = 18;  // min: 18
 	// main loop
@@ -106,17 +106,17 @@ USB_OFF:
 		if (!GO) { continue; }
 		for (i = 0; i < 6; i++) {
 			HID_buffer[2] = code[i] + 0x1E;
-			USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+			send_HID_report(&hUsbDeviceFS, HID_buffer, 8);
 			delay_ms(delay);
 			HID_buffer[2] = 0;
-			USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+			send_HID_report(&hUsbDeviceFS, HID_buffer, 8);
 			delay_ms(delay);
 		}
 		HID_buffer[2] = 0x28;
-		USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+		send_HID_report(&hUsbDeviceFS, HID_buffer, 8);
 		delay_ms(delay);
 		HID_buffer[2] = 0;
-		USBD_HID_SendReport(&hUsbDeviceFS, HID_buffer, 8);
+		send_HID_report(&hUsbDeviceFS, HID_buffer, 8);
 		delay_ms(delay);
 
 		for (i = 0; i < 6; i++) {

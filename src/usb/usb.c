@@ -96,7 +96,6 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	}
 	// ~ HAL_PCD_Msp_Init
 
-	hpcd_USB_OTG_FS.State = HAL_PCD_STATE_BUSY;
 	hpcd_USB_OTG_FS.Init.dma_enable = 0U;
 	usb->GAHBCFG &= ~USB_OTG_GAHBCFG_GINT;
 
@@ -222,7 +221,6 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	// ~ USB_DevInit
 
 	hpcd_USB_OTG_FS.USB_Address = 0U;
-	hpcd_USB_OTG_FS.State = HAL_PCD_STATE_READY;
 	// USB_DevDisconnect
 	*PCGCCTL &= ~(USB_OTG_PCGCCTL_STOPCLK | USB_OTG_PCGCCTL_GATECLK);
 	device->DCTL |= USB_OTG_DCTL_SDIS;
