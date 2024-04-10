@@ -154,40 +154,21 @@ typedef struct {
 } USBD_DescriptorsTypeDef;
 
 typedef struct _Device_cb {
-	uint8_t (*Init)(struct _USBD_HandleTypeDef *pdev, uint8_t cfgidx);
-	void (*DeInit)(struct _USBD_HandleTypeDef *pdev, uint8_t cfgidx);
+	uint8_t (*Init)(void* handle, uint8_t cfgidx);
+	void (*DeInit)(void* handle, uint8_t cfgidx);
 	/* Control Endpoints*/
-	void (*Setup)(struct _USBD_HandleTypeDef *pdev, setup_header_t* req);
-	void (*EP0_TxSent)(struct _USBD_HandleTypeDef *pdev);
-	void (*EP0_RxReady)(struct _USBD_HandleTypeDef *pdev);
+	void (*Setup)(void* handle, setup_header_t* req);
+	void (*EP0_TxSent)(void* handle);
+	void (*EP0_RxReady)(void* handle);
 	/* Class Specific Endpoints*/
-	void (*DataIn)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
-	void (*DataOut)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
-	void (*SOF)(struct _USBD_HandleTypeDef *pdev);
-	void (*IsoINIncomplete)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
-	void (*IsoOUTIncomplete)(struct _USBD_HandleTypeDef *pdev, uint8_t epnum);
+	void (*DataIn)(void* handle, uint8_t epnum);
+	void (*DataOut)(void* handle, uint8_t epnum);
+	void (*SOF)(void* handle);
+	void (*IsoINIncomplete)(void* handle, uint8_t epnum);
+	void (*IsoOUTIncomplete)(void* handle, uint8_t epnum);
 
 	uint8_t  *(*GetFSConfigDescriptor)(uint16_t *length);
 } USBD_ClassTypeDef;
-
-typedef struct _USBD_HandleTypeDef {
-	uint32_t                dev_config;
-	uint32_t                dev_default_config;
-	uint32_t                dev_config_status;
-	USBD_EndpointTypeDef    ep_in[16];
-	USBD_EndpointTypeDef    ep_out[16];
-	__IO uint32_t           ep0_state;
-	uint32_t                ep0_data_len;
-	__IO uint8_t            dev_state;
-	__IO uint8_t            dev_old_state;
-	uint32_t                dev_remote_wakeup;
-
-	setup_header_t			header;
-	USBD_DescriptorsTypeDef *pDesc;
-	USBD_ClassTypeDef       *pClass;
-	void                    *pData;
-} USBD_HandleTypeDef;
-
 
 // L2 ========================================= /
 typedef struct {
@@ -226,17 +207,30 @@ typedef struct {
 	uint32_t                Setup[12];   /*!< Setup packet buffer               */
 	uint32_t                FrameNumber; /*!< Store Current Frame number        */
 	uint32_t battery_charging_active;    /*!< Enable or disable Battery charging. This parameter can be set to ENABLE or DISABLE        */
-	void                    *pData;      /*!< Pointer to upper stack Handler */
-} PCD_HandleTypeDef;
+
+	uint32_t                dev_config;
+	uint32_t                dev_default_config;
+	uint32_t                dev_config_status;
+	USBD_EndpointTypeDef    ep_in[16];
+	USBD_EndpointTypeDef    ep_out[16];
+	__IO uint32_t           ep0_state;
+	uint32_t                ep0_data_len;
+	__IO uint8_t            dev_state;
+	__IO uint8_t            dev_old_state;
+	uint32_t                dev_remote_wakeup;
+
+	setup_header_t			header;
+	USBD_DescriptorsTypeDef *pDesc;
+	USBD_ClassTypeDef       *pClass;
+} USB_handle_t;
 
 
 /*!<
  * variables
  * */
-extern USBD_HandleTypeDef hUsbDeviceFS;
 extern USBD_DescriptorsTypeDef FS_Desc;  // TODO: init
-PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern USBD_ClassTypeDef USBD_HID;  // TODO: init
+USB_handle_t USB_handle;
 
 
 /*!<

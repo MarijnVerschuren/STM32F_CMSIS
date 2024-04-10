@@ -45,10 +45,10 @@ typedef struct {
  * handle and class definition
  * */
 HID_handle_t HID_handle;
-static uint8_t HID_init(USBD_HandleTypeDef *pdev, uint8_t cfgidx);
-static void HID_deinit(USBD_HandleTypeDef *pdev, uint8_t cfgidx);
-static void HID_setup(USBD_HandleTypeDef *pdev, setup_header_t* req);
-static void HID_in_transfer(USBD_HandleTypeDef *pdev, uint8_t epnum);
+static uint8_t HID_init(void* handle, uint8_t cfgidx);
+static void HID_deinit(void* handle, uint8_t cfgidx);
+static void HID_setup(void* handle, setup_header_t* req);
+static void HID_in_transfer(void* handle, uint8_t epnum);
 static uint8_t *get_HID_config_descriptor(uint16_t *length);
 USBD_ClassTypeDef USBD_HID = {
 		HID_init,
@@ -158,34 +158,34 @@ __ALIGN_BEGIN static uint8_t USBD_HID_Desc[HID_DESCRIPTOR_SIZE] __ALIGN_END = {
 /*!<
  * imported functions
  * */
-extern void IN_transfer(PCD_HandleTypeDef *hpcd, uint8_t ep_num, void* buffer, uint32_t size);
-extern void IEP0_transfer(USBD_HandleTypeDef* handle, uint8_t *buffer, uint32_t size);
-extern void open_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type);
-extern void open_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type);
-extern void close_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
-extern void stall_IEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
-extern void stall_OEP(PCD_HandleTypeDef *hpcd, uint8_t ep_num);
-extern void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
+extern void IN_transfer(USB_handle_t *handle, uint8_t ep_num, void* buffer, uint32_t size);
+extern void IEP0_transfer(USB_handle_t* handle, uint8_t *buffer, uint32_t size);
+extern void open_IEP(USB_handle_t *handle, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type);
+extern void open_OEP(USB_handle_t *handle, uint8_t ep_num, uint16_t ep_mps, uint8_t ep_type);
+extern void close_IEP(USB_handle_t *handle, uint8_t ep_num);
+extern void stall_IEP(USB_handle_t *handle, uint8_t ep_num);
+extern void stall_OEP(USB_handle_t *handle, uint8_t ep_num);
+extern void stall_EP(USB_handle_t* handle, uint8_t ep_num);
 
 
 /*!<
  * class functions
  * */
-static uint8_t HID_init(USBD_HandleTypeDef* pdev, uint8_t config_index) {
+static uint8_t HID_init(void* handle, uint8_t config_index) {
 	(void)config_index;
-	pdev->ep_in[HID_IEP].bInterval = HID_FS_BINTERVAL;
-	open_IEP(pdev->pData, HID_IEP, HID_MPS, USBD_EP_TYPE_INTR);
-	pdev->ep_in[HID_IEP].is_used = 1U;
+	((USB_handle_t*)handle)->ep_in[HID_IEP].bInterval = HID_FS_BINTERVAL;
+	open_IEP(handle, HID_IEP, HID_MPS, USBD_EP_TYPE_INTR);
+	((USB_handle_t*)handle)->ep_in[HID_IEP].is_used = 1U;
 	HID_handle.state = USBD_HID_IDLE;
 	return 0;
 }
-static void HID_deinit(USBD_HandleTypeDef* pdev, uint8_t config_index) {
+static void HID_deinit(void* handle, uint8_t config_index) {
 	(void)config_index;
-	close_IEP(pdev->pData, HID_IEP);
-	pdev->ep_in[HID_IEP].is_used = 0U;
-	pdev->ep_in[HID_IEP].bInterval = 0U;
+	close_IEP(handle, HID_IEP);
+	((USB_handle_t*)handle)->ep_in[HID_IEP].is_used = 0U;
+	((USB_handle_t*)handle)->ep_in[HID_IEP].bInterval = 0U;
 }
-static void HID_setup(USBD_HandleTypeDef* pdev, setup_header_t* request) {
+static void HID_setup(void* handle, setup_header_t* request) {
 	uint16_t	size;
 	uint8_t*	buffer;
 	uint16_t	status = 0U;
@@ -197,19 +197,19 @@ static void HID_setup(USBD_HandleTypeDef* pdev, setup_header_t* request) {
 			HID_handle.protocol = request->value & 0xFFU;
 			return;
 		case HID_GET_PROTOCOL:
-			return IEP0_transfer(pdev, (uint8_t *)&HID_handle.protocol, 1U);
+			return IEP0_transfer(handle, (uint8_t *)&HID_handle.protocol, 1U);
 		case HID_SET_IDLE:
 			HID_handle.idle = (request->value >> 8) & 0xFFU;
 			return;
 		case HID_GET_IDLE:
-			return IEP0_transfer(pdev, (uint8_t *)&HID_handle.idle, 1U);
+			return IEP0_transfer(handle, (uint8_t *)&HID_handle.idle, 1U);
 		default: break;
 		} break;
 	case STANDARD_REQUEST:
 		switch (request->command) {
 		case GET_STATUS:
-			if (pdev->dev_state == USBD_STATE_CONFIGURED) {
-				return IEP0_transfer(pdev, (uint8_t *)&status, 2U);
+			if (((USB_handle_t*)handle)->dev_state == USBD_STATE_CONFIGURED) {
+				return IEP0_transfer(handle, (uint8_t *)&status, 2U);
 			} break;
 		case GET_DESCRIPTOR:
 			if (((request->value >> 8) & 0xFFU) == HID_REPORT_DESCRIPTOR_TYPE) {
@@ -219,13 +219,13 @@ static void HID_setup(USBD_HandleTypeDef* pdev, setup_header_t* request) {
 				size = HID_DESCRIPTOR_SIZE > request->length? request->length : HID_DESCRIPTOR_SIZE;
 				buffer = USBD_HID_Desc;
 			} else { break; }
-			return IEP0_transfer(pdev, buffer, size);
+			return IEP0_transfer(handle, buffer, size);
 		case GET_INTERFACE:
-			if (pdev->dev_state == USBD_STATE_CONFIGURED) {
-				return IEP0_transfer(pdev, (uint8_t *)&HID_handle.alt_setting, 1U);
+			if (((USB_handle_t*)handle)->dev_state == USBD_STATE_CONFIGURED) {
+				return IEP0_transfer(handle, (uint8_t *)&HID_handle.alt_setting, 1U);
 			} break;
 		case SET_INTERFACE:
-			if (pdev->dev_state == USBD_STATE_CONFIGURED) {
+			if (((USB_handle_t*)handle)->dev_state == USBD_STATE_CONFIGURED) {
 				HID_handle.alt_setting = request->value & 0xFFU;
 				return;
 			} break;
@@ -234,10 +234,10 @@ static void HID_setup(USBD_HandleTypeDef* pdev, setup_header_t* request) {
 		} break;
 	default: break;
 	}
-	stall_EP(pdev->pData, 0x0U);
+	stall_EP(handle, 0x0U);
 }
-static void HID_in_transfer(USBD_HandleTypeDef* pdev, uint8_t epnum) {
-	(void)pdev; (void)epnum; HID_handle.state = USBD_HID_IDLE;
+static void HID_in_transfer(void* handle, uint8_t epnum) {
+	(void)handle; (void)epnum; HID_handle.state = USBD_HID_IDLE;
 }
 static uint8_t* get_HID_config_descriptor(uint16_t* length) {
 	*length = (uint16_t)sizeof(USBD_HID_CfgDesc);
@@ -248,7 +248,7 @@ static uint8_t* get_HID_config_descriptor(uint16_t* length) {
 /*!<
  * usage
  * */
-void send_HID_report(USBD_HandleTypeDef* pdev, uint8_t* report, uint16_t len) {
-	if (pdev->dev_state != USBD_STATE_CONFIGURED || HID_handle.state != USBD_HID_IDLE) { return; }
-	HID_handle.state = USBD_HID_BUSY; IN_transfer(pdev->pData, HID_IEP, report, len);
+void send_HID_report(USB_handle_t* handle, uint8_t* report, uint16_t len) {
+	if (handle->dev_state != USBD_STATE_CONFIGURED || HID_handle.state != USBD_HID_IDLE) { return; }
+	HID_handle.state = USBD_HID_BUSY; IN_transfer(handle, HID_IEP, report, len);
 }
