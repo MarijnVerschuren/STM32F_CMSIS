@@ -22,7 +22,7 @@
 /*!<
  * descriptors TODO: elsewhere?
  * */
-__ALIGN_BEGIN uint8_t device_descriptor[DEVICE_DESCRIPTOR_SIZE] __ALIGN_END = {
+ uint8_t device_descriptor[DEVICE_DESCRIPTOR_SIZE]  = {
 	0x12,                       /*bLength */
 	USB_DEVICE_DESCRIPTOR,       /*bDescriptorType*/
 	0x00,                       /*bcdUSB */
@@ -30,7 +30,7 @@ __ALIGN_BEGIN uint8_t device_descriptor[DEVICE_DESCRIPTOR_SIZE] __ALIGN_END = {
 	0x00,                       /*bDeviceClass*/
 	0x00,                       /*bDeviceSubClass*/
 	0x00,                       /*bDeviceProtocol*/
-	USB_MAX_EP0_SIZE,           /*bMaxPacketSize*/
+	EP0_MPS,           /*bMaxPacketSize*/
 	0x00,        			   	/*idVendor low*/
 	0x00,         				/*idVendor hi*/
 	0x00,        				/*idProduct low*/
@@ -40,15 +40,15 @@ __ALIGN_BEGIN uint8_t device_descriptor[DEVICE_DESCRIPTOR_SIZE] __ALIGN_END = {
 	USBD_IDX_MFC_STR,           /*Index of manufacturer  string*/
 	USBD_IDX_PRODUCT_STR,       /*Index of product string*/
 	USBD_IDX_SERIAL_STR,        /*Index of serial number string*/
-	USBD_MAX_NUM_CONFIGURATION  /*bNumConfigurations*/
+	MAX_CONFIGURATION_COUNT  /*bNumConfigurations*/
 };
-__ALIGN_BEGIN uint8_t lang_ID_descriptor[LANG_ID_STRING_DESCRIPTOR_SIZE] __ALIGN_END = {
+ uint8_t lang_ID_descriptor[LANG_ID_STRING_DESCRIPTOR_SIZE]  = {
 	LANG_ID_STRING_DESCRIPTOR_SIZE,
 	USB_STRING_DESCRIPTOR,
 	0x09U,
 	0x04U
 };
-__ALIGN_BEGIN uint8_t manufacturer_string_descriptor[0xE] __ALIGN_END = {
+ uint8_t manufacturer_string_descriptor[0xE]  = {
 		0xE,
 		USB_STRING_DESCRIPTOR,
 		'M', 0x00,
@@ -58,7 +58,7 @@ __ALIGN_BEGIN uint8_t manufacturer_string_descriptor[0xE] __ALIGN_END = {
 		'J', 0x00,
 		'N', 0x00,
 };
-__ALIGN_BEGIN uint8_t product_string_descriptor[0x16] __ALIGN_END = {
+ uint8_t product_string_descriptor[0x16]  = {
 		0x16,
 		USB_STRING_DESCRIPTOR,
 		'M', 0x00,
@@ -72,7 +72,7 @@ __ALIGN_BEGIN uint8_t product_string_descriptor[0x16] __ALIGN_END = {
 		'I', 0x00,
 		'D', 0x00,
 };
-__ALIGN_BEGIN uint8_t serial_string_descriptor[SERIAL_STRING_DESCRIPTOR_SIZE] __ALIGN_END = {
+ uint8_t serial_string_descriptor[SERIAL_STRING_DESCRIPTOR_SIZE]  = {
 		SERIAL_STRING_DESCRIPTOR_SIZE,
 		USB_STRING_DESCRIPTOR,
 		'?', 0x00,
@@ -88,7 +88,7 @@ __ALIGN_BEGIN uint8_t serial_string_descriptor[SERIAL_STRING_DESCRIPTOR_SIZE] __
 		'?', 0x00,
 		'?', 0x00
 };
-__ALIGN_BEGIN uint8_t configuration_string_descriptor[0x16] __ALIGN_END = {
+ uint8_t configuration_string_descriptor[0x16]  = {
 		0x16,
 		USB_STRING_DESCRIPTOR,
 		'H', 0x00,
@@ -102,7 +102,7 @@ __ALIGN_BEGIN uint8_t configuration_string_descriptor[0x16] __ALIGN_END = {
 		'I', 0x00,
 		'G', 0x00,
 };
-__ALIGN_BEGIN uint8_t interface_string_descriptor[0x1C] __ALIGN_END = {
+ uint8_t interface_string_descriptor[0x1C]  = {
 		0x1C,
 		USB_STRING_DESCRIPTOR,
 		'H', 0x00,
@@ -121,7 +121,7 @@ __ALIGN_BEGIN uint8_t interface_string_descriptor[0x1C] __ALIGN_END = {
 };
 
 
-USBD_DescriptorsTypeDef FS_Desc = {
+descriptor_handle_t FS_Desc = {
 	device_descriptor,
 	DEVICE_DESCRIPTOR_SIZE,
 	lang_ID_descriptor,

@@ -91,18 +91,20 @@ int main(void) {
 	*/
 
 	// USB
-	USB_device_init(USB_OTG_FS);
+	config_USB(USB_OTG_FS, &HID_class, &FS_Desc, 0, 1);
+	start_USB(USB_OTG_FS);
+
 USB_OFF:
 	GPIO_write(LED_GPIO_PORT, LED_PIN, 1);
-	while (USB_handle.dev_state != USBD_STATE_CONFIGURED);
+	while (USB_handle.dev_state != DEV_STATE_CONFIGURED);
 	GPIO_write(LED_GPIO_PORT, LED_PIN, 0);
 
-	uint8_t code[6] = {5, 5, 4, 4, 5, 4};
+	uint8_t code[6] = {6, 6, 6, 6, 6, 6};
 	uint8_t i;
 	uint8_t delay = 18;  // min: 18
 	// main loop
 	for(;;) {
-		if (USB_handle.dev_state != USBD_STATE_CONFIGURED) { goto USB_OFF; }
+		if (USB_handle.dev_state != DEV_STATE_CONFIGURED) { goto USB_OFF; }
 		if (!GO) { continue; }
 		for (i = 0; i < 6; i++) {
 			HID_buffer[2] = code[i] + 0x1E;
