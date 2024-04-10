@@ -32,21 +32,11 @@
 #define USB_MAX_EP0_SIZE                                64U
 #define HID_FS_BINTERVAL     0xAU
 
-#define USBD_EP_TYPE_CTRL                               0x00U
-#define USBD_EP_TYPE_ISOC                               0x01U
-#define USBD_EP_TYPE_BULK                               0x02U
-#define USBD_EP_TYPE_INTR                               0x03U
-
 
 #define USBD_MAX_POWER                                  0x32U /* 100 mA */
 
 
 // L3 ========================================= /
-#define EP_TYPE_CTRL                           0U
-#define EP_TYPE_ISOC                           1U
-#define EP_TYPE_BULK                           2U
-#define EP_TYPE_INTR                           3U
-#define EP_TYPE_MSK                            3U
 
 #define USBD_EP0_IDLE                                   0x00U
 #define USBD_EP0_SETUP                                  0x01U
@@ -109,11 +99,17 @@ typedef enum {
 	SET_INTERFACE =			0x0B
 }	SETUP_command_t;
 
+typedef enum {
+	EP_TYPE_CTRL =			0b00U,
+	EP_TYPE_ISOC =			0b01U,
+	EP_TYPE_BULK =			0b10U,
+	EP_TYPE_INTR =			0b11U
+}	EP_type_t;
+
 
 /*!<
  * struct types
  * */
-// L0.0
 typedef __PACKED_STRUCT {
 	uint32_t EPNUM		: 4;	// endpoint number
 	uint32_t BCNT		: 11;	// byte count
@@ -152,7 +148,7 @@ typedef struct {
 } USBD_DescriptorsTypeDef;
 
 typedef struct {
-	uint8_t	(*config)				(void* handle, uint8_t cfgidx);
+	uint8_t	(*config)			(void* handle, uint8_t cfgidx);
 	void	(*DeInit)			(void* handle, uint8_t cfgidx);
 
 	void	(*setup)			(void* handle, setup_header_t* req);
@@ -179,19 +175,15 @@ typedef struct {
 } USB_config_t;
 
 typedef struct {
-	uint8_t   is_stall;
-	uint8_t   is_iso_incomplete;
-	uint8_t   type;
-	uint32_t  maxpacket;
-	uint8_t*  xfer_buff;
-	uint32_t  xfer_len;
-	uint32_t  xfer_count;
-	uint32_t  xfer_size;
-
-	uint16_t status;
-	uint32_t total_length;
-	uint32_t rem_length;
-	uint16_t is_used;
+	uint16_t	mps;
+	uint8_t*	buffer;
+	uint16_t	size;
+	uint16_t	count;
+	uint16_t	status;
+	EP_type_t	type				: 2;
+	uint8_t		is_used				: 1;
+	uint8_t		is_stall			: 1;
+	uint8_t		is_iso_incomplete	: 1;
 } USB_EPTypeDef;
 
 typedef struct {

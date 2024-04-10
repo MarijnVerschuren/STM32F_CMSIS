@@ -173,7 +173,7 @@ extern void stall_EP(USB_handle_t* handle, uint8_t ep_num);
  * */
 static uint8_t HID_init(void* handle, uint8_t config_index) {
 	(void)config_index;
-	open_IEP(handle, HID_IEP, HID_MPS, USBD_EP_TYPE_INTR);
+	open_IEP(handle, HID_IEP, HID_MPS, EP_TYPE_INTR);
 	((USB_handle_t*)handle)->IN_ep[HID_IEP].is_used = 1U;
 	HID_handle.state = USBD_HID_IDLE;
 	return 0;
@@ -236,10 +236,6 @@ static void HID_setup(void* handle, setup_header_t* request) {
 }
 static void HID_in_transfer(void* handle, uint8_t epnum) {
 	(void)handle; (void)epnum; HID_handle.state = USBD_HID_IDLE;
-}
-static uint8_t* get_HID_config_descriptor(uint16_t* length) {
-	*length = (uint16_t)sizeof(USBD_HID_CfgDesc);
-	return USBD_HID_CfgDesc;
 }
 
 

@@ -107,14 +107,14 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 
 	for (i = 0U; i < USB_handle.config.dev_endpoints; i++) {
 		USB_handle.IN_ep[i].type = EP_TYPE_CTRL;
-		USB_handle.IN_ep[i].maxpacket = 0U;
-		USB_handle.IN_ep[i].xfer_buff = 0U;
-		USB_handle.IN_ep[i].xfer_len = 0U;
+		USB_handle.IN_ep[i].mps = 0U;
+		USB_handle.IN_ep[i].buffer = 0U;
+		USB_handle.IN_ep[i].size = 0U;
 
 		USB_handle.OUT_ep[i].type = EP_TYPE_CTRL;
-		USB_handle.OUT_ep[i].maxpacket = 0U;
-		USB_handle.OUT_ep[i].xfer_buff = 0U;
-		USB_handle.OUT_ep[i].xfer_len = 0U;
+		USB_handle.OUT_ep[i].mps = 0U;
+		USB_handle.OUT_ep[i].buffer = 0U;
+		USB_handle.OUT_ep[i].size = 0U;
 	}
 
 	// USB_DevInit
