@@ -55,25 +55,17 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	__IO uint32_t*				PCGCCTL =	(void*)(((uint32_t)usb) + USB_OTG_PCGCCTL_BASE);
 
 	// USBD_Init
-	hUsbDeviceFS.pClass[0] =		NULL;
-	hUsbDeviceFS.pUserData[0] =		NULL;
-	hUsbDeviceFS.pConfDesc =		NULL;
+	hUsbDeviceFS.pClass =		NULL;
 	hUsbDeviceFS.pDesc =			&FS_Desc;
 	hUsbDeviceFS.dev_state =		USBD_STATE_DEFAULT;
-	hUsbDeviceFS.id =				DEVICE_FS;
 	// USBD_LL_Init
 	hpcd_USB_OTG_FS.pData = &hUsbDeviceFS;
 	hUsbDeviceFS.pData = &hpcd_USB_OTG_FS;
 	hpcd_USB_OTG_FS.Instance = usb;
 	hpcd_USB_OTG_FS.Init.dev_endpoints = 4;
-	hpcd_USB_OTG_FS.Init.speed = PCD_SPEED_FULL;
-	hpcd_USB_OTG_FS.Init.dma_enable = DISABLE;
-	hpcd_USB_OTG_FS.Init.phy_itface = PCD_PHY_EMBEDDED;
 	hpcd_USB_OTG_FS.Init.Sof_enable = DISABLE;
 	hpcd_USB_OTG_FS.Init.low_power_enable = ENABLE;  // TODO!!!
-	hpcd_USB_OTG_FS.Init.lpm_enable = DISABLE;
 	hpcd_USB_OTG_FS.Init.vbus_sensing_enable = DISABLE;
-	hpcd_USB_OTG_FS.Init.use_dedicated_ep1 = DISABLE;
 	// HAL_PCD_Init
 	// HAL_PCD_Msp_Init
 	fconfig_GPIO(GPIOA, 11, GPIO_alt_func, GPIO_no_pull, GPIO_push_pull, GPIO_very_high_speed, 10);
@@ -96,7 +88,6 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	}
 	// ~ HAL_PCD_Msp_Init
 
-	hpcd_USB_OTG_FS.Init.dma_enable = 0U;
 	usb->GAHBCFG &= ~USB_OTG_GAHBCFG_GINT;
 
 	// USB_CoreInit
@@ -115,7 +106,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 
 	usb->GUSBCFG &= ~(USB_OTG_GUSBCFG_FHMOD | USB_OTG_GUSBCFG_FDMOD);
 	usb->GUSBCFG |= USB_OTG_GUSBCFG_FDMOD;
-	while (((usb->GINTSTS) & 0x1U) != (uint32_t)USB_DEVICE_MODE);
+	while ((usb->GINTSTS) & 0b1U);
 
 	for (i = 0U; i < hpcd_USB_OTG_FS.Init.dev_endpoints; i++) {
 		hpcd_USB_OTG_FS.IN_ep[i].is_in = 1U;
@@ -157,7 +148,7 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	*PCGCCTL = 0U;
 
 	// USB_SetDevSpeed
-	device->DCFG |= USB_OTG_SPEED_FULL;
+	device->DCFG |= 3U;  // set full speed
 	// ~ USB_SetDevSpeed
 
 	/* Flush the FIFOs */
@@ -233,18 +224,12 @@ void USB_device_init(USB_OTG_GlobalTypeDef*	usb) {
 	// ~ USBD_Init
 
 	// USBD_RegisterClass
-	uint16_t len = 0U;
-	hUsbDeviceFS.pClass[0] = &USBD_HID;
-	if (USBD_HID.GetFSConfigDescriptor != NULL) {
-		hUsbDeviceFS.pConfDesc = (void*)USBD_HID.GetFSConfigDescriptor(&len);
-	}
-	hUsbDeviceFS.NumClasses++;
+	hUsbDeviceFS.pClass = &USBD_HID;
 	// ~ USBD_RegisterClass
 
 	// USBD_Start
 	// USBD_LL_Start
 	// HAL_PCD_Start
-	PCD_HandleTypeDef* hpcd = hUsbDeviceFS.pData;
 	if (((usb->GUSBCFG & USB_OTG_GUSBCFG_PHYSEL) != 0U) &&
 		(hpcd_USB_OTG_FS.Init.battery_charging_enable == 1U)) {
 		/* Enable USB Transceiver */

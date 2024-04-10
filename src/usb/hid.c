@@ -70,7 +70,7 @@ USBD_ClassTypeDef USBD_HID = {
  * */
 __ALIGN_BEGIN static uint8_t USBD_HID_CfgDesc[HID_CONFIG_DESCRIPTOR_SIZE] __ALIGN_END = {
 	0x09,                                               /* bLength: Configuration Descriptor size */
-	USB_DESC_TYPE_CONFIGURATION,                        /* bDescriptorType: Configuration */
+	USB_CONFIG_DESCRIPTOR,                        /* bDescriptorType: Configuration */
 	HID_CONFIG_DESCRIPTOR_SIZE,                         /* wTotalLength: Bytes returned */
 	0x00,
 	0x01,                                               /* bNumInterfaces: 1 interface */
@@ -80,7 +80,7 @@ __ALIGN_BEGIN static uint8_t USBD_HID_CfgDesc[HID_CONFIG_DESCRIPTOR_SIZE] __ALIG
 	USBD_MAX_POWER,                                     /* MaxPower (mA) */
 	/************** Descriptor of Joystick Mouse interface ****************/
 	0x09,                                               /* bLength: Interface Descriptor size */
-	USB_DESC_TYPE_INTERFACE,                            /* bDescriptorType: Interface descriptor type */
+	USB_INTERFACE_DESCRIPTOR,                            /* bDescriptorType: Interface descriptor type */
 	0x00,                                               /* bInterfaceNumber: Number of Interface */
 	0x00,                                               /* bAlternateSetting: Alternate setting */
 	0x01,                                               /* bNumEndpoints */
@@ -100,7 +100,7 @@ __ALIGN_BEGIN static uint8_t USBD_HID_CfgDesc[HID_CONFIG_DESCRIPTOR_SIZE] __ALIG
 	0x00,
 	/******************** Descriptor of Mouse endpoint ********************/
 	0x07,                                               /* bLength: Endpoint Descriptor size */
-	USB_DESC_TYPE_ENDPOINT,                             /* bDescriptorType:*/
+	USB_ENDPOINT_DESCRIPTOR,                             /* bDescriptorType:*/
 	HID_IEP | 0x80,                       		        /* bEndpointAddress: Endpoint Address (IN) */
 	0x03,                                               /* bmAttributes: Interrupt endpoint */
 	HID_MPS,                               		        /* wMaxPacketSize: 4 Bytes max */
@@ -173,8 +173,6 @@ extern void stall_EP(PCD_HandleTypeDef* hpcd, uint8_t ep_num);
  * */
 static uint8_t HID_init(USBD_HandleTypeDef* pdev, uint8_t config_index) {
 	(void)config_index;
-	pdev->pClassDataCmsit[pdev->classId] = &HID_handle;
-	pdev->pClassData = pdev->pClassDataCmsit[pdev->classId];
 	pdev->ep_in[HID_IEP].bInterval = HID_FS_BINTERVAL;
 	open_IEP(pdev->pData, HID_IEP, HID_MPS, USBD_EP_TYPE_INTR);
 	pdev->ep_in[HID_IEP].is_used = 1U;
@@ -186,7 +184,6 @@ static void HID_deinit(USBD_HandleTypeDef* pdev, uint8_t config_index) {
 	close_IEP(pdev->pData, HID_IEP);
 	pdev->ep_in[HID_IEP].is_used = 0U;
 	pdev->ep_in[HID_IEP].bInterval = 0U;
-	pdev->pClassDataCmsit[pdev->classId] = NULL;
 }
 static void HID_setup(USBD_HandleTypeDef* pdev, setup_header_t* request) {
 	uint16_t	size;
